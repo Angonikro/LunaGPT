@@ -2,6 +2,10 @@
 
 Deutschsprachiger Desktop-Chatclient für Linux und Raspberry Pi. LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
 
+![LunaGPT](lunagpt.png)
+
+[Github Seite](https://github.com/Angonikro/LunaGPT/)
+
 ## Funktionen
 
 - Anmeldung über „Mit ChatGPT anmelden“ im Browser
@@ -81,3 +85,5 @@ Chat-Verlauf und Einstellungen werden lokal von der Anwendung verwaltet. Dateiwe
 **1.10.1** – Scroll-Fix für die Chat-Ansicht nach dem Laden einer Unterhaltung und nach Lunas Antwort.
 
 Siehe [CHANGELOG.md](CHANGELOG.md) für Details.
+
+73 de DO2QG Andreas
