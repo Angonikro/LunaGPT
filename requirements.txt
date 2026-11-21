@@ -1,4 +1,1 @@
-PySide6>=6.6
-SpeechRecognition>=3.10
-PyAudio>=0.2.13
-cryptography>=41
+# Kernabhängigkeiten; Debian-Systempakete werden bevorzugt über apt installiert.\nPySide6>=6.6\ncryptography>=41\n

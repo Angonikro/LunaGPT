@@ -3,11 +3,15 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 OUT="$ROOT/dist"
 STAGE="$ROOT/build/deb-root"
-VERSION="1.10.1"
+VERSION=$(grep '^APP_VERSION = ' "$ROOT/lunagpt/version.py" | cut -d '"' -f 2)
+if [ -z "$VERSION" ]; then
+  echo "Fehler: APP_VERSION konnte aus lunagpt/version.py nicht gelesen werden." >&2
+  exit 1
+fi
 rm -rf "$STAGE"
 mkdir -p "$STAGE/DEBIAN" "$STAGE/usr/bin" "$STAGE/usr/share/lunagpt/lunagpt" \
   "$STAGE/usr/share/applications" "$STAGE/usr/share/icons/hicolor/256x256/apps" "$OUT"
-cp "$ROOT/debian/control" "$STAGE/DEBIAN/control"
+sed "s/^Version: .*/Version: $VERSION/" "$ROOT/debian/control" > "$STAGE/DEBIAN/control"
 chmod g-s "$STAGE/DEBIAN" || true
 chmod 755 "$STAGE/DEBIAN"
 cp "$ROOT/bin/lunagpt" "$STAGE/usr/bin/lunagpt"

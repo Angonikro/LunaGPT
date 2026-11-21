@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-import os, sys, json, base64, mimetypes, sqlite3, urllib.request, urllib.error, uuid, subprocess, tempfile, time, queue, threading, re, zipfile, shutil, shlex, stat
+import os, sys, ast, json, base64, mimetypes, sqlite3, filecmp, urllib.request, urllib.error, uuid, subprocess, tempfile, time, queue, threading, re, zipfile, shutil, shlex, stat
 from pathlib import Path
 from datetime import datetime
-from PySide6.QtCore import Qt, QThread, Signal, QSize, QTimer
-from PySide6.QtGui import QFont, QAction, QPixmap, QImage, QTextCursor
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QTimer, QUrl, QDir
+from PySide6.QtGui import QFont, QAction, QPixmap, QImage, QTextCursor, QDesktopServices
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QTextBrowser, QTextEdit, QPushButton, QLabel, QLineEdit,
     QFileDialog, QMessageBox, QComboBox, QCheckBox, QSplitter, QInputDialog, QDialog,
-    QFormLayout, QDialogButtonBox, QPlainTextEdit, QProgressBar, QMenu, QSlider)
+    QFormLayout, QDialogButtonBox, QPlainTextEdit, QProgressBar, QMenu, QSlider, QFileSystemModel, QTreeView)
 
 def frage_de(parent, title, text, buttons=QMessageBox.Yes | QMessageBox.No, defaultButton=QMessageBox.NoButton):
     """Fragedialog mit deutschen Beschriftungen, unabhängig von der Systemsprache."""
@@ -164,8 +164,12 @@ def _tts_worker():
 
 threading.Thread(target=_tts_worker, name="LunaGPT-TTS", daemon=True).start()
 
+try:
+    from .version import APP_VERSION
+except ImportError:  # Direkter Start über python3 lunagpt/main.py
+    from version import APP_VERSION
+
 APP_NAME = "LunaGPT"
-APP_VERSION = "1.10.1"
 CONFIG_DIR = Path.home()/".config"/"lunagpt"
 DATA_DIR = Path.home()/".local"/"share"/"lunagpt"
 CONFIG = CONFIG_DIR/"config.json"
@@ -208,7 +212,8 @@ def load_config():
     defaults = {
         "api_key": "", "model": DEFAULT_MODEL, "speak": True, "auth_mode": "api",
         "tts_voice": "mb-de4", "tts_speed": 165, "tts_pitch": 45, "tts_volume": 185,
-        "ui_mode": "Allgemein", "web_search": False
+        "ui_mode": "Allgemein", "web_search": False, "workspace_dir": str(Path.home() / "Documents" / "LunaGPT-Arbeitsbereich"),
+        "project_dir": "", "project_read_enabled": False, "project_write_enabled": False, "project_exec_enabled": False
     }
     defaults.update(cfg)
     return defaults
@@ -234,9 +239,17 @@ def init_db():
     con.commit(); con.close()
 
 def dball(sql,args=(),fetch=True):
-    con=sqlite3.connect(DB); cur=con.execute(sql,args)
-    result=cur.fetchall() if fetch else None
-    con.commit(); con.close(); return result
+    con = sqlite3.connect(DB)
+    try:
+        cur = con.execute(sql, args)
+        result = cur.fetchall() if fetch else None
+        con.commit()
+        return result
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
 
 def extract_file(path):
     p=Path(path); ext=p.suffix.lower()
@@ -348,18 +361,33 @@ AGENT_TOOLS = [
  {"type":"function","name":"copy_attachment_to_workspace","description":"Kopiert einen angehängten Originaldatei-Binärinhalt unverändert in den Arbeitsbereich. Verwende dies, um vollständige ZIP- und DEB-Dateien in ein Projekt aufzunehmen.","parameters":{"type":"object","properties":{"name":{"type":"string","description":"Exakter Name des Anhangs"},"destination":{"type":"string","description":"Zielpfad relativ zum Arbeitsbereich"}},"required":["name","destination"],"additionalProperties":False}},
  {"type":"function","name":"extract_attachment_to_workspace","description":"Entpackt ein angehängtes ZIP-Quellarchiv sicher in einen Unterordner des Arbeitsbereichs oder extrahiert den Inhalt eines Debian-Pakets (.deb), ohne es zu installieren oder auszuführen. Nutze dies, um echten Quellcode zu übernehmen, nicht nur Dokumente zu schreiben.","parameters":{"type":"object","properties":{"name":{"type":"string","description":"Exakter Name des ZIP- oder DEB-Anhangs"},"destination":{"type":"string","description":"Zielordner relativ zum Arbeitsbereich"}},"required":["name","destination"],"additionalProperties":False}},
  {"type":"function","name":"list_workspace_files","description":"Listet die bisher im Arbeitsbereich erstellten Dateien auf.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
+ {"type":"function","name":"list_project_files","description":"Listet Dateien im vom Nutzer ausdrücklich ausgewählten Projektordner auf. Nur verwenden, wenn der Projektzugriff in LunaGPT aktiviert ist.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
+ {"type":"function","name":"read_project_file","description":"Liest eine Textdatei aus dem vom Nutzer ausgewählten Projektordner. Pfad relativ zum Projektordner. Nur verwenden, wenn Lesen freigegeben ist.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
+ {"type":"function","name":"analyze_project","description":"Analysiert lesend die Struktur des ausdrücklich ausgewählten Projekts: Dateitypen, wichtige Projektdateien, Python-Einstiegspunkte und Verzeichnisübersicht. Verändert und startet nichts. Nur mit aktivierter Projekt-Lesefreigabe.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
+ {"type":"function","name":"check_project_python","description":"Prüft Python-Dateien im ausgewählten Projekt auf Syntaxfehler mit dem AST-Parser, ohne Code auszuführen oder Dateien zu verändern. Nur mit aktivierter Projekt-Lesefreigabe.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Optional: einzelne Python-Datei relativ zum Projektordner"}},"additionalProperties":False}},
+ {"type":"function","name":"list_project_backups","description":"Listet Sicherungen im geschützten .lunagpt-backups-Ordner des ausgewählten Projekts auf. Nur verwenden, wenn Projekt-Lesen aktiviert ist.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Optionaler relativer Dateipfad"}},"additionalProperties":False}},
+ {"type":"function","name":"read_project_backup","description":"Liest eine interne Sicherung. backup_id stammt aus list_project_backups; path ist der ursprüngliche relative Dateipfad. Nur lesend.","parameters":{"type":"object","properties":{"backup_id":{"type":"string"},"path":{"type":"string"}},"required":["backup_id","path"],"additionalProperties":False}},
+ {"type":"function","name":"compare_project_backup","description":"Vergleicht eine interne Sicherung mit der aktuellen Originaldatei. Nur lesend.","parameters":{"type":"object","properties":{"backup_id":{"type":"string"},"path":{"type":"string"}},"required":["backup_id","path"],"additionalProperties":False}},
+ {"type":"function","name":"restore_project_backup","description":"Stellt eine Sicherung nur wieder her, wenn der Nutzer dies in seiner aktuellen Nachricht ausdrücklich verlangt. Erstellt und verifiziert vorher eine Sicherung des aktuellen Stands.","parameters":{"type":"object","properties":{"backup_id":{"type":"string"},"path":{"type":"string"}},"required":["backup_id","path"],"additionalProperties":False}},
+ {"type":"function","name":"write_project_file","description":"Erstellt oder bearbeitet eine Textdatei im ausgewählten Projektordner. Nur verwenden, wenn der Nutzer KI-Änderungen ausdrücklich aktiviert und in seiner aktuellen Nachricht eine konkrete Änderung verlangt hat. Vorhandene Dateien werden automatisch gesichert.","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"],"additionalProperties":False}},
  {"type":"function","name":"write_workspace_file","description":"Erstellt oder aktualisiert eine Datei im LunaGPT-Arbeitsbereich. Verwende relative Pfade, z.B. Projekt/README.md.","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"],"additionalProperties":False}},
  {"type":"function","name":"set_workspace_executable","description":"Setzt bei einer ausdrücklich angeforderten Projektaufgabe das Ausführungsrecht für ein vorhandenes Shell-Skript im LunaGPT-Arbeitsbereich. Nur Dateien mit der Endung .sh innerhalb des Arbeitsbereichs sind erlaubt; es werden keine Dateien außerhalb des Arbeitsbereichs verändert.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Relativer Pfad zu einer vorhandenen .sh-Datei im Arbeitsbereich"}},"required":["path"],"additionalProperties":False}},
  {"type":"function","name":"create_zip","description":"Packt ein Projektverzeichnis oder ausgewählte Dateien aus dem LunaGPT-Arbeitsbereich in eine ZIP-Datei. Der Ausgabe-ZIP-Pfad ist relativ zum Arbeitsbereich.","parameters":{"type":"object","properties":{"output":{"type":"string"},"paths":{"type":"array","items":{"type":"string"},"description":"Zu packende Dateien/Verzeichnisse, relativ zum Arbeitsbereich"},"top_level_folder":{"type":"string","description":"Optionaler Ordnername, unter dem die Inhalte im ZIP liegen"}},"required":["output","paths"],"additionalProperties":False}},
+ {"type":"function","name":"set_project_script_executable","description":"Setzt das Ausführungsrecht für ein freigegebenes Buildskript im aktuell ausgewählten Projektordner oder einem Unterordner. Erfordert Build-Ausführungsfreigabe.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"build_deb.sh, build_release.sh oder release.sh; auch relativ in Unterordnern, z.B. gluecksrad/build_release.sh"}},"required":["path"],"additionalProperties":False}},
+ {"type":"function","name":"run_project_command","description":"Führt nach ausdrücklicher Nutzeranweisung einen begrenzten Build- oder Prüf-Befehl direkt im aktuell ausgewählten Projektordner aus. Erfordert aktivierte Projekt-Lese-, Schreib- UND Build-Ausführungsfreigabe. Kein Shell-Parsing, keine Pipes, Umleitungen oder sudo. Unterstützt Python-Syntaxprüfung, dpkg-deb-Prüfung/-Build, ZIP-Prüfung und freigegebene Buildskripte build_deb.sh/build_release.sh/release.sh.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"Ein einzelner Befehl relativ zum Projektordner, z.B. ./build_release.sh, python3 -m py_compile main.py oder dpkg-deb --info release/app.deb"}},"required":["command"],"additionalProperties":False}},
  {"type":"function","name":"run_workspace_command","description":"Führt einen begrenzten Build- oder Testbefehl im Arbeitsbereich aus. Kein Shell-Parsing, keine Pipes, Umleitungen oder sudo. Ein vorhandenes build_deb.sh darf auch in einem Projekt-Unterordner ausgeführt werden; das Skript läuft dann in seinem eigenen Projektordner. Zulässig sind Python-Syntaxprüfung, dpkg-deb, zip/unzip-Prüfung und vorhandene Buildskripte.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"Ein einzelner Befehl, z.B. python3 -m py_compile Projekt/lunagpt/main.py, ./Projekt/build_deb.sh oder dpkg-deb --info Projekt/dist/lunagpt.deb"}},"required":["command"],"additionalProperties":False}}
  ,{"type":"function","name":"prepare_github_release","description":"Bereitet nach ausdrücklichem Nutzerauftrag ein sauberes GitHub-Repository und ein separates, neu gebautes DEB vor; unterstützt sowohl LunaGPT-Repositories als auch normale Testprojekte mit main.py im Projektstamm; die Ausgabe wird als zwei einzelne Dateien im release/-Ordner abgelegt, nicht als Gesamtarchiv des Arbeitsbereichs. Entfernt nur generierte build/dist/Cache-Dateien innerhalb des angegebenen Projektordners, führt build_deb.sh aus, prüft Syntax und Paketversion, erstellt eine saubere Repository-ZIP ohne alte DEBs/Builddateien und kopiert das neu gebaute DEB als separates Ergebnis. Der Ausgabeordner release/ enthält danach ausschließlich die aktuelle GitHub-ZIP und das dazugehörige DEB; alte Release-Ausgaben werden vorab entfernt. Verwende dies bei Aufträgen wie 'GitHub-fertig machen, saubere ZIP und DEB geben'. Es lädt nichts zu GitHub hoch.","parameters":{"type":"object","properties":{"project":{"type":"string","description":"Relativer Pfad zum entpackten Projektordner im Arbeitsbereich"},"version":{"type":"string","description":"Erwartete Versionsnummer, z.B. 1.7.4"},"zip_name":{"type":"string","description":"Dateiname der Repository-ZIP, z.B. LunaGPT-1.7.4-GitHub.zip"}},"required":["project","version","zip_name"],"additionalProperties":False}}
 
 ]
 
 class AgentTools:
-    def __init__(self, attachments, chat_id=None):
+    def __init__(self, attachments, chat_id=None, workspace_dir=None, project_dir=None, project_read_enabled=False, project_write_enabled=False, project_exec_enabled=False):
         self.attachments = list(attachments or [])
-        base = Path.home() / "Documents" / "LunaGPT-Arbeitsbereich"
+        self.project_root = Path(project_dir).expanduser().resolve() if project_dir else None
+        self.project_read_enabled = bool(project_read_enabled and self.project_root and self.project_root.is_dir())
+        self.project_write_enabled = bool(project_write_enabled and self.project_read_enabled)
+        self.project_exec_enabled = bool(project_exec_enabled and self.project_write_enabled)
+        base = Path(workspace_dir).expanduser() if workspace_dir else Path.home() / "Documents" / "LunaGPT-Arbeitsbereich"
         # Workspace is stable per chat, so a follow-up can continue prior file work.
         safe_id = re.sub(r"[^A-Za-z0-9_-]", "", str(chat_id or ""))[:80]
         if not safe_id:
@@ -374,6 +402,56 @@ class AgentTools:
         if target != self.root and self.root not in target.parents: raise ValueError("Pfad außerhalb des Arbeitsbereichs ist nicht erlaubt.")
         self.root.mkdir(parents=True, exist_ok=True)
         return target
+
+    def _project_safe(self, rel):
+        if not self.project_read_enabled or self.project_root is None:
+            raise ValueError("Kein Projektordner ausgewählt oder KI-Projektzugriff (Lesen) ist nicht aktiviert.")
+        rel = str(rel or "").strip()
+        if not rel or Path(rel).is_absolute():
+            raise ValueError("Bitte einen relativen Pfad innerhalb des Projektordners verwenden.")
+        if ".lunagpt-backups" in Path(rel).parts:
+            raise ValueError("Der interne Sicherungsordner ist für KI-Dateioperationen gesperrt.")
+        target = (self.project_root / rel).resolve()
+        if target != self.project_root and self.project_root not in target.parents:
+            raise ValueError("Zugriff außerhalb des ausgewählten Projektordners ist nicht erlaubt.")
+        backup_root = (self.project_root / ".lunagpt-backups").resolve()
+        if target == backup_root or backup_root in target.parents:
+            raise ValueError("Der interne Sicherungsordner ist für KI-Dateioperationen gesperrt.")
+        return target
+
+    def _backup_file(self, backup_id, rel):
+        if not self.project_read_enabled or self.project_root is None:
+            raise ValueError("Projekt-Lesezugriff ist nicht aktiviert.")
+        backup_id=str(backup_id or "").strip()
+        if not re.fullmatch(r"\d{8}-\d{6}-\d{6}", backup_id):
+            raise ValueError("Ungültige Sicherungskennung.")
+        rel=str(rel or "").strip()
+        if not rel or Path(rel).is_absolute() or ".." in Path(rel).parts or ".lunagpt-backups" in Path(rel).parts:
+            raise ValueError("Ungültiger ursprünglicher Dateipfad.")
+        backup_root=(self.project_root/".lunagpt-backups").resolve()
+        candidate=(backup_root/backup_id/rel).resolve()
+        if backup_root not in candidate.parents or not candidate.is_file() or candidate.is_symlink():
+            raise ValueError("Sicherungsdatei nicht gefunden oder Pfad unzulässig.")
+        if candidate.stat().st_size > 2_000_000:
+            raise ValueError("Sicherungsdatei ist größer als 2 MB.")
+        return candidate
+
+    @staticmethod
+    def _atomic_write(target, content):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(prefix=".lunagpt-", suffix=".tmp", dir=str(target.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temp_name, target)
+        except Exception:
+            try:
+                os.unlink(temp_name)
+            except OSError:
+                pass
+            raise
 
     def call(self, name, args):
         if name == "list_attachments":
@@ -401,7 +479,7 @@ class AgentTools:
             if not source or not source.is_file(): return {"error":"Die Originaldatei ist lokal nicht verfügbar; Kopieren ist nicht möglich."}
             target=self._safe(args.get("destination")); target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copy2(source,target)
-            return {"copied":str(target.relative_to(self.root)),"bytes":target.stat().st_size,"workspace":str(self.root)}
+            return {"copied":str(target.relative_to(self.root)),"absolute_path":str(target),"bytes":target.stat().st_size,"workspace":str(self.root)}
         if name == "extract_attachment_to_workspace":
             wanted=str(args.get("name", "")); a=next((x for x in self.attachments if x.get("name")==wanted),None)
             if not a: return {"error":f"Anhang nicht gefunden: {wanted}"}
@@ -437,17 +515,260 @@ class AgentTools:
                 count=sum(1 for x in target.rglob("*") if x.is_file())
                 total=sum(x.stat().st_size for x in target.rglob("*") if x.is_file())
             else: raise ValueError("Nur ZIP- und DEB-Anhänge können hier extrahiert werden.")
-            return {"extracted_to":str(target.relative_to(self.root)),"files":count,"bytes":total,"workspace":str(self.root),"note":"Dateien wurden nur extrahiert, nicht installiert oder ausgeführt."}
+            return {"extracted_to":str(target.relative_to(self.root)),"absolute_path":str(target),"files":count,"bytes":total,"workspace":str(self.root),"note":"Dateien wurden nur extrahiert, nicht installiert oder ausgeführt."}
+        if name == "list_project_files":
+            if not self.project_read_enabled:
+                raise ValueError("Projektzugriff ist nicht freigegeben. Bitte zuerst einen Projektordner auswählen und Lesen aktivieren.")
+            files=[]
+            excluded={".git", "__pycache__", ".venv", "venv", ".lunagpt-backups"}
+            for item in sorted(self.project_root.rglob("*")):
+                if any(part in excluded for part in item.relative_to(self.project_root).parts):
+                    continue
+                if item.is_file():
+                    files.append({"path":item.relative_to(self.project_root).as_posix(),"absolute_path":str(item),"bytes":item.stat().st_size})
+                    if len(files)>=2000:
+                        break
+            return {"project":str(self.project_root),"files":files,"truncated":len(files)>=2000}
+        if name == "analyze_project":
+            if not self.project_read_enabled or self.project_root is None:
+                raise ValueError("Projekt-Lesezugriff ist nicht aktiviert.")
+            excluded={".git","__pycache__",".venv","venv",".lunagpt-backups","build","dist"}
+            files=[]
+            counts={}
+            total_bytes=0
+            for item in sorted(self.project_root.rglob("*")):
+                rel=item.relative_to(self.project_root)
+                if any(part in excluded for part in rel.parts) or item.is_symlink():
+                    continue
+                if item.is_file():
+                    ext=item.suffix.lower() or "[ohne Endung]"
+                    counts[ext]=counts.get(ext,0)+1
+                    try: size=item.stat().st_size
+                    except OSError: continue
+                    total_bytes+=size
+                    files.append({"path":rel.as_posix(),"bytes":size})
+                    if len(files)>=3000: break
+            important=[]
+            for candidate in ("README.md","README","pyproject.toml","setup.py","requirements.txt","CHANGELOG.md","main.py","src/main.py"):
+                f=self.project_root/candidate
+                if f.is_file() and not f.is_symlink():
+                    important.append({"path":candidate,"bytes":f.stat().st_size})
+            py=[x["path"] for x in files if x["path"].endswith(".py")]
+            return {"project":str(self.project_root),"file_count":len(files),"total_bytes":total_bytes,
+                    "file_types":dict(sorted(counts.items(),key=lambda kv:(-kv[1],kv[0]))),
+                    "important_files":important,"python_files":len(py),
+                    "python_entry_candidates":[x for x in py if Path(x).name in ("main.py","__main__.py","app.py")][:100],
+                    "files":files[:500],"file_list_truncated":len(files)>500}
+        if name == "check_project_python":
+            if not self.project_read_enabled or self.project_root is None:
+                raise ValueError("Projekt-Lesezugriff ist nicht aktiviert.")
+            requested=str(args.get("path") or "").strip()
+            if requested:
+                candidates=[self._project_safe(requested)]
+                if candidates[0].suffix.lower()!=".py": raise ValueError("Bitte eine .py-Datei angeben.")
+            else:
+                excluded={".git","__pycache__",".venv","venv",".lunagpt-backups","build","dist"}
+                candidates=[]
+                for item in self.project_root.rglob("*.py"):
+                    rel=item.relative_to(self.project_root)
+                    if any(part in excluded for part in rel.parts) or item.is_symlink(): continue
+                    candidates.append(item)
+                    if len(candidates)>=500: break
+            checked=[]; errors=[]
+            for item in candidates:
+                if not item.is_file(): continue
+                try:
+                    if item.stat().st_size>1_500_000:
+                        errors.append({"path":str(item.relative_to(self.project_root)),"error":"Datei größer als 1,5 MB; übersprungen"})
+                        continue
+                    source=item.read_text(encoding="utf-8")
+                    ast.parse(source,filename=str(item))
+                    checked.append(str(item.relative_to(self.project_root)))
+                except SyntaxError as exc:
+                    errors.append({"path":str(item.relative_to(self.project_root)),"line":exc.lineno,"column":exc.offset,"error":exc.msg})
+                except (OSError,UnicodeDecodeError) as exc:
+                    errors.append({"path":str(item.relative_to(self.project_root)),"error":str(exc)})
+            return {"project":str(self.project_root),"checked":len(checked),"syntax_errors":len(errors),"ok":not errors,
+                    "checked_files":checked,"errors":errors,"note":"Es wurde kein Projektcode ausgeführt und keine Datei verändert."}
+        if name == "list_project_backups":
+            if not self.project_read_enabled or self.project_root is None:
+                raise ValueError("Projekt-Lesezugriff ist nicht aktiviert.")
+            wanted=str(args.get("path") or "").strip()
+            if wanted and (Path(wanted).is_absolute() or ".." in Path(wanted).parts or ".lunagpt-backups" in Path(wanted).parts):
+                raise ValueError("Ungültiger Projektdateipfad.")
+            backup_root=self.project_root/".lunagpt-backups"
+            results=[]
+            if backup_root.is_dir():
+                for folder in sorted((x for x in backup_root.iterdir() if x.is_dir() and not x.is_symlink()), reverse=True):
+                    try: datetime.strptime(folder.name, "%Y%m%d-%H%M%S-%f")
+                    except ValueError: continue
+                    for item in folder.rglob("*"):
+                        if not item.is_file() or item.is_symlink(): continue
+                        rel=item.relative_to(folder).as_posix()
+                        if wanted and rel != wanted: continue
+                        try:
+                            resolved=item.resolve()
+                            if folder.resolve() not in resolved.parents or item.stat().st_size > 2_000_000: continue
+                            results.append({"backup_id":folder.name,"path":rel,"bytes":item.stat().st_size})
+                        except OSError: continue
+            return {"backups":results[:500],"count":len(results),"project":str(self.project_root)}
+        if name == "read_project_backup":
+            backup=self._backup_file(args.get("backup_id"),args.get("path"))
+            try: content=backup.read_text(encoding="utf-8")
+            except UnicodeDecodeError: raise ValueError("Die Sicherung ist keine lesbare UTF-8-Textdatei.")
+            return {"backup_id":str(args.get("backup_id")),"path":str(args.get("path")),"content":content[:250000]}
+        if name == "compare_project_backup":
+            backup=self._backup_file(args.get("backup_id"),args.get("path"))
+            original=self._project_safe(args.get("path"))
+            if not original.is_file(): raise ValueError("Die aktuelle Originaldatei wurde nicht gefunden.")
+            try: old=backup.read_text(encoding="utf-8"); current=original.read_text(encoding="utf-8")
+            except UnicodeDecodeError: raise ValueError("Original oder Sicherung ist keine lesbare UTF-8-Textdatei.")
+            import difflib
+            diff="".join(difflib.unified_diff(old.splitlines(True),current.splitlines(True),fromfile="Sicherung",tofile="Aktuell"))
+            return {"backup_id":str(args.get("backup_id")),"path":str(args.get("path")),"identical":old==current,"backup_content":old[:120000],"current_content":current[:120000],"diff":diff[:120000]}
+        if name == "restore_project_backup":
+            backup=self._backup_file(args.get("backup_id"),args.get("path"))
+            target=self._project_safe(args.get("path"))
+            if not self.project_write_enabled: raise ValueError("Projekt-Schreibzugriff ist nicht aktiviert.")
+            if not target.is_file(): raise ValueError("Die Originaldatei existiert nicht; Wiederherstellung ist hier nicht möglich.")
+            try: content=backup.read_text(encoding="utf-8")
+            except UnicodeDecodeError: raise ValueError("Die Sicherung ist keine lesbare UTF-8-Textdatei.")
+            stamp=datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            safety=self.project_root/".lunagpt-backups"/stamp/target.relative_to(self.project_root)
+            safety.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(target,safety)
+            if not safety.is_file() or not filecmp.cmp(target,safety,shallow=False):
+                raise RuntimeError("Sicherheitskopie des aktuellen Stands konnte nicht verifiziert werden; Wiederherstellung abgebrochen.")
+            self._atomic_write(target,content)
+            return {"restored":str(target.relative_to(self.project_root)),"from_backup":str(args.get("backup_id")),"safety_backup":str(safety),"verified":True}
+        if name == "read_project_file":
+            target=self._project_safe(args.get("path"))
+            if not target.is_file():
+                raise ValueError("Projektdatei wurde nicht gefunden.")
+            if target.stat().st_size>1_500_000:
+                raise ValueError("Datei ist größer als 1,5 MB; bitte einen kleineren Quelltextabschnitt verwenden.")
+            try:
+                content=target.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                raise ValueError("Die Datei ist keine UTF-8-Textdatei und wird nicht als Quelltext gelesen.")
+            return {"path":str(target.relative_to(self.project_root)),"absolute_path":str(target),"content":content,"bytes":target.stat().st_size}
+        if name == "write_project_file":
+            if not self.project_write_enabled:
+                raise ValueError("Änderungen am Projekt sind nicht freigegeben. Der Nutzer muss in LunaGPT zuerst 'KI darf Projektdateien ändern' aktivieren.")
+            target=self._project_safe(args.get("path")); content=args.get("content","")
+            if not isinstance(content,str):
+                raise ValueError("Dateiinhalt muss Text sein.")
+            if len(content)>2_000_000:
+                raise ValueError("Projektdateien sind auf 2 MB begrenzt.")
+            if target.exists() and not target.is_file():
+                raise ValueError("Das Ziel ist keine reguläre Datei.")
+            target.parent.mkdir(parents=True,exist_ok=True)
+            backup_path=None
+            if target.exists():
+                backup_root=self.project_root/".lunagpt-backups"/datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+                backup_path=backup_root/target.relative_to(self.project_root)
+                backup_path.parent.mkdir(parents=True,exist_ok=True)
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, backup_path)
+                if not backup_path.is_file() or not filecmp.cmp(target, backup_path, shallow=False):
+                    raise IOError("Die Sicherung konnte nicht verifiziert werden; die Originaldatei bleibt unverändert.")
+            self._atomic_write(target, content)
+            return {"saved":str(target.relative_to(self.project_root)),"absolute_path":str(target),"bytes":target.stat().st_size,"backup":str(backup_path) if backup_path else None,"project":str(self.project_root)}
         if name == "list_workspace_files":
             if not self.root.exists():
                 return {"workspace":str(self.root),"files":[]}
-            return {"workspace":str(self.root),"files":[str(x.relative_to(self.root)) for x in sorted(self.root.rglob('*')) if x.is_file()]}
+            return {"workspace":str(self.root),"files":[{"name":str(x.relative_to(self.root)),"absolute_path":str(x)} for x in sorted(self.root.rglob('*')) if x.is_file()]}
         if name == "write_workspace_file":
             target=self._safe(args.get("path")); content=args.get("content","")
             if not isinstance(content,str): raise ValueError("Dateiinhalt muss Text sein.")
             if len(content)>2_000_000: raise ValueError("Einzeldateien sind auf 2 MB begrenzt.")
             target.parent.mkdir(parents=True,exist_ok=True); target.write_text(content,encoding="utf-8")
-            return {"created":str(target.relative_to(self.root)),"bytes":target.stat().st_size,"workspace":str(self.root)}
+            return {"created":str(target.relative_to(self.root)),"absolute_path":str(target),"bytes":target.stat().st_size,"workspace":str(self.root)}
+        if name == "run_project_command":
+            if not self.project_exec_enabled or self.project_root is None:
+                raise ValueError("Build-/Befehlsausführung ist nicht freigegeben. Aktiviere im ausgewählten Projekt die Lese-, Schreib- und Build-Ausführungsfreigabe.")
+            command=str(args.get("command", "")).strip()
+            if not command or len(command)>1000:
+                raise ValueError("Befehl fehlt oder ist zu lang.")
+            if any(x in command for x in ("|", ";", "&&", "||", ">", "<", "`", "$(", "\n", "\r")):
+                raise ValueError("Nur ein einzelner Befehl ohne Shell-Operatoren ist erlaubt.")
+            parts=shlex.split(command)
+            if not parts:
+                raise ValueError("Leerer Befehl.")
+            executable=parts[0]
+            cwd=self.project_root
+            script_names = {"build_deb.sh", "build_release.sh", "release.sh"}
+            script_rel = Path(executable[2:]) if executable.startswith("./") else Path(executable)
+            if not Path(executable).is_absolute() and script_rel.name in script_names:
+                if len(parts)!=1:
+                    raise ValueError("Buildskripte dürfen keine zusätzlichen Argumente erhalten.")
+                if ".." in script_rel.parts or not script_rel.parts:
+                    raise ValueError("Buildskripte müssen über einen sicheren relativen Pfad innerhalb des Projektordners angegeben werden.")
+                unresolved = self.project_root / script_rel
+                if unresolved.is_symlink():
+                    raise ValueError("Symlinks als Buildskripte sind nicht erlaubt.")
+                script=unresolved.resolve()
+                if self.project_root not in script.parents or not script.is_file() or script.name not in script_names:
+                    raise ValueError("Das Buildskript muss als reguläre Datei innerhalb des ausgewählten Projektordners liegen.")
+                if not (script.stat().st_mode & stat.S_IXUSR):
+                    raise ValueError("Das Buildskript besitzt kein Ausführungsrecht. Aktiviere die Build-Freigabe und verwende set_project_script_executable mit dem relativen Unterordnerpfad.")
+                cwd=script.parent
+                parts=[str(script)]
+            elif executable == "python3":
+                if len(parts)>=4 and parts[1:3]==["-m","py_compile"]:
+                    for arg in parts[3:]:
+                        candidate=(self.project_root/arg).resolve()
+                        if Path(arg).is_absolute() or (candidate!=self.project_root and self.project_root not in candidate.parents) or not candidate.is_file() or candidate.suffix!=".py":
+                            raise ValueError("Syntaxprüfung ist nur für vorhandene Python-Dateien innerhalb des Projektordners erlaubt.")
+                    if len(parts)==3: raise ValueError("Bitte mindestens eine .py-Datei angeben.")
+                else:
+                    raise ValueError("Python ist hier ausschließlich für py_compile freigegeben. Für Builds verwende ein freigegebenes Buildskript.")
+            elif executable == "dpkg-deb":
+                if len(parts)==3 and parts[1] in ("--info","--contents","-f"):
+                    target=(self.project_root/parts[2]).resolve()
+                    if Path(parts[2]).is_absolute() or self.project_root not in target.parents or not target.is_file():
+                        raise ValueError("dpkg-deb darf nur Paketdateien innerhalb des Projektordners prüfen.")
+                elif len(parts) in (3,4,5) and parts[1:3]==["--build","--root-owner-group"]:
+                    target=(self.project_root/parts[3]).resolve()
+                    if Path(parts[3]).is_absolute() or self.project_root not in target.parents or not target.is_dir():
+                        raise ValueError("dpkg-deb darf nur einen Build-Ordner innerhalb des Projektordners paketieren.")
+                    if len(parts)==5:
+                        output=(self.project_root/parts[4]).resolve()
+                        if Path(parts[4]).is_absolute() or self.project_root not in output.parents:
+                            raise ValueError("DEB-Ausgabepfad muss innerhalb des Projektordners liegen.")
+                else:
+                    raise ValueError("dpkg-deb ist nur für --info, --contents oder --build --root-owner-group innerhalb des Projekts erlaubt.")
+            elif executable in ("zip", "unzip"):
+                expected_args = ["-T"] if executable == "zip" else ["-t"]
+                if len(parts) != 3 or parts[1] != expected_args[0]:
+                    raise ValueError("zip/unzip sind im Projektmodus ausschließlich für die Integritätsprüfung (-T bzw. -t) freigegeben. Das Erstellen von Archiven erfolgt über ein freigegebenes Buildskript.")
+                archive_arg=parts[2]
+                if Path(archive_arg).is_absolute() or ".." in Path(archive_arg).parts:
+                    raise ValueError("ZIP-Prüfungen dürfen nur relative Archivpfade im Projektordner verwenden.")
+                candidate=(self.project_root/archive_arg).resolve()
+                if self.project_root not in candidate.parents or not candidate.is_file() or candidate.suffix.lower()!=".zip":
+                    raise ValueError("Zu prüfendes ZIP-Archiv muss innerhalb des Projektordners vorhanden sein.")
+            else:
+                raise ValueError("Nicht freigegeben. Erlaubt sind build_deb.sh/build_release.sh/release.sh, Python-Syntaxprüfung, dpkg-deb sowie zip/unzip-Prüfungen.")
+            env={"PATH":os.environ.get("PATH","/usr/bin:/bin"),"HOME":str(self.project_root),"LANG":"C.UTF-8","LC_ALL":"C.UTF-8"}
+            proc=subprocess.run(parts,cwd=str(cwd),capture_output=True,text=True,timeout=600,env=env)
+            return {"command":command,"returncode":proc.returncode,"success":proc.returncode==0,"stdout":(proc.stdout or "")[-16000:],"stderr":(proc.stderr or "")[-16000:],"project":str(self.project_root),"working_directory":str(cwd)}
+        if name == "set_project_script_executable":
+            if not self.project_exec_enabled or self.project_root is None:
+                raise ValueError("Build-Ausführungsfreigabe ist nicht aktiviert.")
+            rel=str(args.get("path","")).strip()
+            rel_path=Path(rel)
+            allowed_names={"build_deb.sh","build_release.sh","release.sh"}
+            if not rel or rel_path.is_absolute() or ".." in rel_path.parts or rel_path.name not in allowed_names:
+                raise ValueError("Erlaubt sind build_deb.sh, build_release.sh oder release.sh über einen sicheren relativen Pfad, auch in Unterordnern.")
+            target_unresolved=self.project_root/rel_path
+            if target_unresolved.is_symlink():
+                raise ValueError("Symlinks als Buildskripte sind nicht erlaubt.")
+            target=target_unresolved.resolve()
+            if self.project_root not in target.parents or not target.is_file() or target.name not in allowed_names:
+                raise ValueError("Das Buildskript muss als reguläre Datei innerhalb des ausgewählten Projektordners vorhanden sein.")
+            target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            return {"path":str(target),"executable":True,"mode":format(stat.S_IMODE(target.stat().st_mode),"04o")}
         if name == "run_workspace_command":
             command=str(args.get("command", "")).strip()
             if not command or len(command)>1000: raise ValueError("Befehl fehlt oder ist zu lang.")
@@ -759,14 +1080,25 @@ def _response_json(url, token, model, conversation, use_web=False):
         except Exception: msg=body
         raise RuntimeError(f"KI-Anfrage HTTP {e.code}: {msg[:900]}")
 
-def _agent_run(url, token, model, messages, use_web, attachments, chat_id=None):
-    tools=AgentTools(attachments, chat_id)
+def _agent_run(url, token, model, messages, use_web, attachments, chat_id=None, workspace_dir=None, project_dir=None, project_read_enabled=False, project_write_enabled=False, project_exec_enabled=False):
+    tools=AgentTools(attachments, chat_id, workspace_dir, project_dir, project_read_enabled, project_write_enabled, project_exec_enabled)
     conversation=[]
     instructions=""
     for m in messages:
         if m.get("role")=="system": instructions=m.get("content","")
         else: conversation.append({"role":m["role"],"content":m["content"]})
-    instructions += "\n\nDu hast Werkzeuge für echte Dateiarbeit. Entscheide anhand der aktuellen Nutzeranweisung in natürlicher Sprache, ob Dateiarbeit ausdrücklich beauftragt wurde. Eine normale Nachricht, ein bloßer Klick auf Senden, ein Anhang allein oder ein früherer Auftrag sind KEINE Erlaubnis, jetzt Dateien zu erstellen. Rufe Dateiwerkzeuge nur auf, wenn die aktuelle Nachricht konkret verlangt, Anhänge zu untersuchen, Dateien/Code zu erstellen oder zu ändern, ein Projekt vorzubereiten oder eine ZIP zu erzeugen. Verwende keine starren Schlüsselwortregeln; verstehe den Sinn des aktuellen Auftrags. Wenn ein neu erstelltes Shell-Skript wie build_deb.sh vor dem Packen ausführbar sein muss, verwende set_workspace_executable auf die konkrete .sh-Datei im Arbeitsbereich, bevor du create_zip oder prepare_github_release ausführst; ändere Rechte nur im Rahmen des ausdrücklich angeforderten Projektauftrags und prüfe danach die ZIP-Metadaten. Wenn kein solcher Auftrag vorliegt, antworte normal im Chat und erstelle nichts. Bei einem konkreten Projekt-/GitHub-Archivauftrag: Rufe zuerst list_attachments auf, extrahiere angehängte Quell-ZIPs mit extract_attachment_to_workspace und kopiere angehängte DEBs mit copy_attachment_to_workspace. Untersuche danach die vollständigen extrahierten Dateien und Paketdateien. Erstelle ein vollständiges Repository mit dem echten Quellcode und allen erforderlichen Dateien; schreibe NICHT nur README/CHANGELOG/Lizenz und behaupte dann, das Projekt sei fertig. Wenn Quellcode geändert wurde und der Nutzer ein lauffähiges Paket verlangt, nutze run_workspace_command für Syntaxprüfungen und zum Ausführen eines vorhandenen build_deb.sh, auch wenn es in einem Projekt-Unterordner liegt (z.B. Projekt/build_deb.sh); baue DEBs nicht nur durch Kopieren eines alten Pakets. Führe Befehle nur im Arbeitsbereich aus und melde fehlgeschlagene Tests ehrlich. Für ausdrücklich angeforderte Funktionsprüfungen darfst du `python3 Projekt/main.py` verwenden, sofern die .py-Datei im Arbeitsbereich liegt; `dpkg-deb --build --root-owner-group` ist ebenfalls für Build-Ordner innerhalb des Arbeitsbereichs erlaubt. Packe niemals den gesamten Chat-Arbeitsbereich als äußeres ZIP. Gib ausschließlich die beiden Dateien aus `release/` getrennt aus und nenne ihre exakten Pfade. Bei selbst erzeugten Debian-Buildskripten verwende `dpkg-deb --build --root-owner-group` (sofern vom installierten dpkg-deb unterstützt), damit Eigentümer und Gruppe im Paket reproduzierbar root:root sind; behandle Warnungen nicht als erfolgreich bereinigt, sondern prüfe den Build-Ausgang. Der dedizierte release/-Ordner muss nach erfolgreicher Release-Vorbereitung nur die aktuelle GitHub-ZIP und das frisch aus genau dieser ZIP gebaute DEB enthalten; gib diese zwei Dateien getrennt aus, nicht den kompletten Arbeitsordner. Erstelle eine ZIP mit dem kompletten Repository einschließlich Quellcode und bei explizitem Wunsch auch die originale oder neu gebaute DEB-Datei. Wenn der Nutzer ein GitHub-fertiges Projekt mit sauberer ZIP und neu gebautem DEB verlangt, nutze nach den notwendigen Codeänderungen bevorzugt prepare_github_release; gib niemals alte DEBs als neu gebaut aus und prüfe die zurückgegebenen success-/Versions-/Pfadangaben. Prüfe vor Abschluss mit list_workspace_files, dass Quellcode, README, CHANGELOG und gewünschte Pakete wirklich enthalten sind. Sage niemals, etwas erstellt zu haben, bevor das Werkzeug Erfolg gemeldet hat. Nenne am Ende die vollständigen Ausgabe-Pfade. GitHub-Upload/Push ist nicht verfügbar; erstelle stattdessen ein GitHub-fertiges lokales Projekt/ZIP, wenn das gemeint ist."
+    instructions += "\n\nLOKALER PROJEKTZUGRIFF: " + ("Der Nutzer hat diesen Projektordner ausdrücklich ausgewählt: " + str(tools.project_root) + ". Lesen ist " + ("freigegeben" if tools.project_read_enabled else "NICHT freigegeben") + "; Änderungen sind " + ("freigegeben" if tools.project_write_enabled else "NICHT freigegeben") + "; Build-/Befehlsausführung ist " + ("freigegeben" if tools.project_exec_enabled else "NICHT freigegeben") + ". Führe Projekt-Builds ausschließlich im ausgewählten Projektordner mit run_project_command aus, und nur wenn die aktuelle Nutzernachricht den Build ausdrücklich verlangt. Bei konkreten Projektfragen darfst du bei aktivierter Lesefreigabe list_project_files/read_project_file verwenden. Schreibe oder ändere Projektdateien nur, wenn die aktuelle Nutzernachricht eine konkrete Änderung verlangt UND project_write_enabled aktiv ist. Vorhandene Dateien werden vor dem Überschreiben gesichert; nenne immer den absoluten Dateipfad und den Sicherungspfad. Bei deaktivierter Freigabe bitte den Nutzer um Aktivierung, statt Zugriff zu versuchen." if tools.project_root else "Es ist kein lokaler Projektordner ausgewählt. Verwende für eigene Ausgaben ausschließlich den LunaGPT-Arbeitsbereich.") + "\n\nWICHTIG ZUM SPEICHERORT: Der aktuelle Arbeitsbereich lautet exakt: " + str(tools.root) + ". Nach JEDEM Erstellen, Kopieren, Entpacken oder Erzeugen eines ZIP/DEB musst du dem Nutzer den vollständigen absoluten Dateipfad nennen. Bei mehreren Dateien alle relevanten absoluten Pfade aufführen. Behaupte niemals, eine Datei sei automatisch im Download-Ordner.\n\nDu hast Werkzeuge für echte Dateiarbeit. Entscheide anhand der aktuellen Nutzeranweisung in natürlicher Sprache, ob Dateiarbeit ausdrücklich beauftragt wurde. Eine normale Nachricht, ein bloßer Klick auf Senden, ein Anhang allein oder ein früherer Auftrag sind KEINE Erlaubnis, jetzt Dateien zu erstellen. Rufe Dateiwerkzeuge nur auf, wenn die aktuelle Nachricht konkret verlangt, Anhänge zu untersuchen, Dateien/Code zu erstellen oder zu ändern, ein Projekt vorzubereiten oder eine ZIP zu erzeugen. Verwende keine starren Schlüsselwortregeln; verstehe den Sinn des aktuellen Auftrags. Wenn ein neu erstelltes Shell-Skript wie build_deb.sh vor dem Packen ausführbar sein muss, verwende set_workspace_executable auf die konkrete .sh-Datei im Arbeitsbereich, bevor du create_zip oder prepare_github_release ausführst; ändere Rechte nur im Rahmen des ausdrücklich angeforderten Projektauftrags und prüfe danach die ZIP-Metadaten. Wenn kein solcher Auftrag vorliegt, antworte normal im Chat und erstelle nichts. Bei einem konkreten Projekt-/GitHub-Archivauftrag: Rufe zuerst list_attachments auf, extrahiere angehängte Quell-ZIPs mit extract_attachment_to_workspace und kopiere angehängte DEBs mit copy_attachment_to_workspace. Untersuche danach die vollständigen extrahierten Dateien und Paketdateien. Erstelle ein vollständiges Repository mit dem echten Quellcode und allen erforderlichen Dateien; schreibe NICHT nur README/CHANGELOG/Lizenz und behaupte dann, das Projekt sei fertig. Wenn Quellcode im ausgewählten Projektordner geändert wurde und der Nutzer ein lauffähiges Paket verlangt, nutze bei aktivierter separater Build-Freigabe run_project_command für Syntaxprüfungen und zum Ausführen eines freigegebenen Buildskripts direkt im Projektordner; baue DEBs nicht nur durch Kopieren eines alten Pakets. Ein nicht ausführbares Buildskript darfst du nur mit set_project_script_executable ausführbar machen, wenn die Build-Freigabe aktiv ist. Führe Arbeitsbereich-Befehle nur im Arbeitsbereich aus. Für den ausdrücklich ausgewählten lokalen Projektordner verwende run_project_command; dieses Werkzeug benötigt eine eigene Build-Ausführungsfreigabe und führt nur die begrenzten Prüf-/Build-Befehle im Projektordner aus. Melde fehlgeschlagene Tests ehrlich. Für ausdrücklich angeforderte Funktionsprüfungen darfst du `python3 Projekt/main.py` verwenden, sofern die .py-Datei im Arbeitsbereich liegt; `dpkg-deb --build --root-owner-group` ist ebenfalls für Build-Ordner innerhalb des Arbeitsbereichs erlaubt. Packe niemals den gesamten Chat-Arbeitsbereich als äußeres ZIP. Gib ausschließlich die beiden Dateien aus `release/` getrennt aus und nenne ihre exakten Pfade. Bei selbst erzeugten Debian-Buildskripten verwende `dpkg-deb --build --root-owner-group` (sofern vom installierten dpkg-deb unterstützt), damit Eigentümer und Gruppe im Paket reproduzierbar root:root sind; behandle Warnungen nicht als erfolgreich bereinigt, sondern prüfe den Build-Ausgang. Der dedizierte release/-Ordner muss nach erfolgreicher Release-Vorbereitung nur die aktuelle GitHub-ZIP und das frisch aus genau dieser ZIP gebaute DEB enthalten; gib diese zwei Dateien getrennt aus, nicht den kompletten Arbeitsordner. Erstelle eine ZIP mit dem kompletten Repository einschließlich Quellcode und bei explizitem Wunsch auch die originale oder neu gebaute DEB-Datei. Wenn der Nutzer ein GitHub-fertiges Projekt mit sauberer ZIP und neu gebautem DEB verlangt, nutze nach den notwendigen Codeänderungen bevorzugt prepare_github_release; gib niemals alte DEBs als neu gebaut aus und prüfe die zurückgegebenen success-/Versions-/Pfadangaben. Prüfe vor Abschluss mit list_workspace_files, dass Quellcode, README, CHANGELOG und gewünschte Pakete wirklich enthalten sind. Sage niemals, etwas erstellt zu haben, bevor das Werkzeug Erfolg gemeldet hat. Nenne am Ende die vollständigen Ausgabe-Pfade. GitHub-Upload/Push ist nicht verfügbar; erstelle stattdessen ein GitHub-fertiges lokales Projekt/ZIP, wenn das gemeint ist."
+    
+
+    instructions += """
+ARBEITSMODUS FÜR LOKALE PROJEKTE:
+- Bei Aufgaben, die ein bestehendes Projekt verbessern, reparieren, erweitern oder analysieren sollen, arbeite in klaren Phasen: (1) Projektstruktur mit analyze_project untersuchen, (2) relevante Dateien lesen, (3) einen konkreten Änderungsplan mit betroffenen Dateien, Zweck und Risiken vorlegen, (4) auf ausdrückliche Freigabe des Nutzers warten, (5) erst danach Änderungen ausführen, (6) passende Prüfungen durchführen und (7) geänderte Dateien, Sicherungen und Prüfergebnisse nennen.
+- Wenn die aktuelle Nutzernachricht ausdrücklich nur eine Analyse oder Planung verlangt, niemals Dateien ändern.
+- Eine allgemeine Zustimmung zu einem vorgeschlagenen Arbeitsmodus ist keine Freigabe für Änderungen an einem konkreten Projekt. Bei mehrstufigen oder riskanten Änderungen zuerst Plan und Freigabe einholen.
+- Für Python-Projekte check_project_python verwenden. Dieses Werkzeug parst Python-Dateien ohne sie auszuführen. Keine Tests, Buildskripte oder Projektprogramme starten, sofern der Nutzer das nicht ausdrücklich freigegeben hat.
+- Bei konkreten kleinen Änderungen darfst du nach klarer Anweisung direkt handeln; bei größeren Aufgaben erst Plan zeigen und Bestätigung abwarten.
+- Nach Änderungen erneut check_project_python ausführen, soweit Python-Dateien betroffen sind. Fehlgeschlagene Prüfungen klar benennen; niemals Erfolg behaupten, wenn die Prüfung nicht erfolgreich war.
+"""
     conversation=[{"role":"system","content":instructions}]+conversation
     for _ in range(30):
         data=_response_json(url,token,model,conversation,use_web)
@@ -792,17 +1124,17 @@ def _agent_run(url, token, model, messages, use_web, attachments, chat_id=None):
     return "Die KI hat das Werkzeug-Limit von 30 Schritten erreicht. Der Arbeitsbereich bleibt für diesen Chat erhalten: " + str(tools.root) + ". Sende eine Folgeanweisung in diesem Chat, um dort fortzufahren."
 
 class Worker(QThread):
-    done=Signal(str); failed=Signal(str)
+    done=Signal(str, str); failed=Signal(str)
     def __init__(self, config, model, messages, web=False, attachments=None, chat_id=None):
         super().__init__(); self.config=config.copy(); self.model=model; self.messages=messages; self.web=web; self.attachments=attachments or []; self.chat_id=chat_id
     def run(self):
         try:
             if self.config.get("auth_mode") == "chatgpt":
                 token=refresh_if_needed(self.config, save_config)
-                answer=_agent_run("https://api.openai.com/v1/responses",token,self.model,self.messages,self.web,self.attachments,self.chat_id)
+                answer=_agent_run("https://api.openai.com/v1/responses",token,self.model,self.messages,self.web,self.attachments,self.chat_id,self.config.get("workspace_dir"),self.config.get("project_dir"),self.config.get("project_read_enabled",False),self.config.get("project_write_enabled",False),self.config.get("project_exec_enabled",False))
             else:
-                answer=_agent_run("https://api.openai.com/v1/responses",self.config.get("api_key",""),self.model,self.messages,self.web,self.attachments,self.chat_id)
-            self.done.emit(answer)
+                answer=_agent_run("https://api.openai.com/v1/responses",self.config.get("api_key",""),self.model,self.messages,self.web,self.attachments,self.chat_id,self.config.get("workspace_dir"),self.config.get("project_dir"),self.config.get("project_read_enabled",False),self.config.get("project_write_enabled",False),self.config.get("project_exec_enabled",False))
+            self.done.emit(answer, str(self.chat_id or ""))
         except Exception as e: self.failed.emit(str(e))
 
 class AuthWorker(QThread):
@@ -1116,7 +1448,7 @@ class ImageGenerationWorker(QThread):
 
     @classmethod
     def _request(cls, url, data=None, timeout=30):
-        headers = {"apikey": "0000000000", "Client-Agent": "LunaGPT:1.10.1:anonymous-free-image-generation", "User-Agent": "LunaGPT/1.10.1", "Accept": "application/json"}
+        headers = {"apikey": "0000000000", "Client-Agent": f"LunaGPT:{APP_VERSION}:anonymous-free-image-generation", "User-Agent": f"LunaGPT/{APP_VERSION}", "Accept": "application/json"}
         payload = None
         if data is not None:
             payload = json.dumps(data).encode("utf-8")
@@ -1165,7 +1497,7 @@ class ImageGenerationWorker(QThread):
             if not image_value:
                 raise RuntimeError("Die Bildantwort von AI Horde enthält keine Bilddaten.")
             if isinstance(image_value, str) and image_value.startswith(("http://", "https://")):
-                req = urllib.request.Request(image_value, headers={"User-Agent": "LunaGPT/1.10.1"})
+                req = urllib.request.Request(image_value, headers={"User-Agent": f"LunaGPT/{APP_VERSION}"})
                 with urllib.request.urlopen(req, timeout=60) as response:
                     image_bytes = response.read(20 * 1024 * 1024 + 1)
             else:
@@ -1376,6 +1708,330 @@ class ImageGenerationDialog(QDialog):
                 QMessageBox.critical(self, "Speichern fehlgeschlagen", str(exc))
 
 
+class ProjectFileDialog(QDialog):
+    """Dateimanager für einen ausdrücklich ausgewählten Projektordner."""
+    def __init__(self, project_dir, parent=None):
+        super().__init__(parent)
+        self.root=Path(project_dir).expanduser().resolve()
+        self.current_file=None
+        self.setWindowTitle("LunaGPT – lokaler Projektmanager")
+        self.resize(1100,720)
+        layout=QVBoxLayout(self)
+        header=QHBoxLayout()
+        path_label=QLabel("Projektordner: " + str(self.root))
+        path_label.setWordWrap(True)
+        header.addWidget(path_label,1)
+        new_file=QPushButton("Neue Datei")
+        new_file.clicked.connect(self.create_file)
+        header.addWidget(new_file)
+        new_folder=QPushButton("Neuer Ordner")
+        new_folder.clicked.connect(self.create_folder)
+        header.addWidget(new_folder)
+        open_folder=QPushButton("Im Dateimanager öffnen")
+        open_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.root))))
+        header.addWidget(open_folder)
+        layout.addLayout(header)
+        split=QSplitter(Qt.Horizontal)
+        self.model=QFileSystemModel(self)
+        self.model.setFilter(QDir.AllEntries | QDir.NoDotAndDotDot | QDir.Hidden)
+        self.model.setRootPath(str(self.root))
+        self.tree=QTreeView()
+        self.tree.setModel(self.model)
+        self.tree.setRootIndex(self.model.index(str(self.root)))
+        for column in (1,2,3): self.tree.hideColumn(column)
+        self.tree.setMinimumWidth(280)
+        self.tree.doubleClicked.connect(self.open_selected)
+        split.addWidget(self.tree)
+        editor_box=QWidget(); editor_layout=QVBoxLayout(editor_box); editor_layout.setContentsMargins(8,0,0,0)
+        self.file_label=QLabel("Datei auswählen, um sie anzuzeigen")
+        self.file_label.setWordWrap(True)
+        editor_layout.addWidget(self.file_label)
+        self.editor=QPlainTextEdit()
+        self.editor.setPlaceholderText("Textdateien können hier angezeigt und bearbeitet werden.")
+        self.editor.setEnabled(False)
+        editor_layout.addWidget(self.editor,1)
+        controls=QHBoxLayout()
+        self.save_button=QPushButton("Änderungen speichern")
+        self.save_button.setEnabled(False)
+        self.save_button.clicked.connect(self.save_current)
+        controls.addWidget(self.save_button)
+        self.revert_button=QPushButton("Neu laden")
+        self.revert_button.setEnabled(False)
+        self.revert_button.clicked.connect(self.reload_current)
+        controls.addWidget(self.revert_button)
+        controls.addStretch()
+        editor_layout.addLayout(controls)
+        split.addWidget(editor_box)
+        split.setStretchFactor(1,1)
+        layout.addWidget(split,1)
+        self.setStyleSheet("QTreeView { border:1px solid #7775; border-radius:6px; } QPlainTextEdit { font-family:monospace; }")
+
+    def open_selected(self, index):
+        path=Path(self.model.filePath(index)).resolve()
+        if path.is_dir(): return
+        if self.editor.document().isModified():
+            answer=frage_de(self,"Ungespeicherte Änderungen","Die aktuelle Datei wurde geändert. Änderungen verwerfen und eine andere Datei öffnen?",QMessageBox.Yes|QMessageBox.No)
+            if answer!=QMessageBox.Yes: return
+        if self.root not in path.parents:
+            QMessageBox.warning(self,"Zugriff verweigert","Die Datei liegt außerhalb des ausgewählten Projektordners.")
+            return
+        if path.stat().st_size>2_000_000:
+            QMessageBox.warning(self,"Datei zu groß","Dateien über 2 MB werden im Editor nicht geöffnet. Du kannst sie im Dateimanager öffnen.")
+            if frage_de(self,"Extern öffnen","Möchtest du diese Datei mit der zugeordneten Anwendung öffnen?",QMessageBox.Yes|QMessageBox.No)==QMessageBox.Yes:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+            return
+        try:
+            content=path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            if frage_de(self,"Keine Textdatei","Diese Datei kann nicht als UTF-8-Text angezeigt werden. Mit der zugeordneten Anwendung öffnen?",QMessageBox.Yes|QMessageBox.No)==QMessageBox.Yes:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+            return
+        self.current_file=path
+        self.file_label.setText(str(path))
+        self.editor.setPlainText(content)
+        self.editor.document().setModified(False)
+        self.editor.setEnabled(True)
+        self.save_button.setEnabled(True)
+        self.revert_button.setEnabled(True)
+
+    def create_file(self):
+        target,_=QFileDialog.getSaveFileName(self,"Neue Projektdatei erstellen",str(self.root),"Alle Dateien (*)")
+        if not target: return
+        path=Path(target).expanduser().resolve()
+        if path==self.root or self.root not in path.parents:
+            QMessageBox.warning(self,"Ungültiger Pfad","Neue Dateien dürfen nur innerhalb des ausgewählten Projektordners erstellt werden.")
+            return
+        try:
+            path.parent.mkdir(parents=True,exist_ok=True)
+            if path.exists():
+                if frage_de(self,"Datei überschreiben","Die Datei existiert bereits. Soll sie ersetzt werden? Eine Sicherung wird angelegt.",QMessageBox.Yes|QMessageBox.No)!=QMessageBox.Yes:
+                    return
+                backup=self.root/".lunagpt-backups"/datetime.now().strftime("%Y%m%d-%H%M%S-%f")/path.relative_to(self.root)
+                backup.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(path,backup)
+            else:
+                path.touch()
+            self.current_file=path
+            self.file_label.setText(str(path))
+            self.editor.setPlainText(path.read_text(encoding="utf-8"))
+            self.editor.document().setModified(False)
+            self.editor.setEnabled(True)
+            self.save_button.setEnabled(True)
+            self.revert_button.setEnabled(True)
+        except Exception as exc:
+            QMessageBox.critical(self,"Datei konnte nicht erstellt werden",str(exc))
+
+    def create_folder(self):
+        name,ok=QInputDialog.getText(self,"Neuen Ordner erstellen","Ordnername:")
+        if not ok or not name.strip(): return
+        name=name.strip()
+        if name in (".","..") or Path(name).name!=name or "/" in name or "\\" in name:
+            QMessageBox.warning(self,"Ungültiger Name","Bitte einen einfachen Ordnernamen ohne Pfadangaben verwenden.")
+            return
+        try:
+            (self.root/name).mkdir(parents=False,exist_ok=False)
+            self.model.setRootPath(str(self.root))
+        except FileExistsError:
+            QMessageBox.warning(self,"Ordner vorhanden","Ein Ordner oder eine Datei mit diesem Namen existiert bereits.")
+        except Exception as exc:
+            QMessageBox.critical(self,"Ordner konnte nicht erstellt werden",str(exc))
+
+    def reload_current(self):
+        if self.current_file and self.current_file.is_file():
+            self.editor.setPlainText(self.current_file.read_text(encoding="utf-8"))
+            self.editor.document().setModified(False)
+
+    def save_current(self):
+        if not self.current_file: return
+        if frage_de(self,"Datei ändern",f"Soll diese Datei gespeichert werden?\n\n{self.current_file}\n\nEine Sicherung der bisherigen Version wird angelegt.",QMessageBox.Yes|QMessageBox.No)!=QMessageBox.Yes:
+            return
+        try:
+            backup=None
+            if self.current_file.exists():
+                backup_root=self.root/".lunagpt-backups"/datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+                backup=backup_root/self.current_file.relative_to(self.root)
+                backup.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(self.current_file,backup)
+            AgentTools._atomic_write(self.current_file, self.editor.toPlainText())
+            self.editor.document().setModified(False)
+            detail="Datei gespeichert:\n"+str(self.current_file)
+            if backup: detail+="\n\nSicherung:\n"+str(backup)
+            QMessageBox.information(self,"Gespeichert",detail)
+        except Exception as exc:
+            QMessageBox.critical(self,"Speichern fehlgeschlagen",str(exc))
+
+
+
+
+class BackupManagerDialog(QDialog):
+    """Grafische, lesende Backup-Übersicht mit geprüftem Restore."""
+    def __init__(self, parent, project_root, read_enabled, write_enabled):
+        super().__init__(parent)
+        self.project_root=Path(project_root).expanduser().resolve()
+        self.tools=AgentTools([], project_dir=str(self.project_root),
+                              project_read_enabled=read_enabled,
+                              project_write_enabled=write_enabled)
+        self.setWindowTitle("LunaGPT – Sicherungsverwaltung")
+        self.resize(1080,720)
+        self.setMinimumSize(900,620)
+        layout=QVBoxLayout(self)
+        layout.addWidget(QLabel("Geschützte Projektsicherungen. Wähle links eine Sicherung aus, um Inhalt und Unterschiede zum aktuellen Stand zu sehen."))
+        split=QSplitter(Qt.Horizontal)
+        self.items=QListWidget()
+        self.items.setMinimumWidth(370)
+        self.items.setUniformItemSizes(False)
+        self.items.setSpacing(3)
+        self.items.currentItemChanged.connect(self.show_selected)
+        split.addWidget(self.items)
+        right=QWidget(); rl=QVBoxLayout(right)
+        self.info=QLabel("Sicherung auswählen")
+        self.info.setWordWrap(True)
+        rl.addWidget(self.info)
+        self.preview=QPlainTextEdit()
+        self.preview.setReadOnly(True)
+        self.preview.setPlaceholderText("Inhalt der Sicherung bzw. Vergleich erscheint hier.")
+        rl.addWidget(self.preview,1)
+        split.addWidget(right); split.setStretchFactor(1,1)
+        split.setSizes([410,650])
+        layout.addWidget(split,1)
+        buttons=QHBoxLayout()
+        self.refresh_btn=QPushButton("Aktualisieren")
+        self.refresh_btn.clicked.connect(self.refresh)
+        buttons.addWidget(self.refresh_btn)
+        self.compare_btn=QPushButton("Mit Original vergleichen")
+        self.compare_btn.clicked.connect(self.compare_selected)
+        buttons.addWidget(self.compare_btn)
+        self.restore_btn=QPushButton("Wiederherstellen …")
+        self.restore_btn.clicked.connect(self.restore_selected)
+        buttons.addWidget(self.restore_btn)
+        buttons.addStretch()
+        close=QPushButton("Schließen"); close.clicked.connect(self.accept); buttons.addWidget(close)
+        layout.addLayout(buttons)
+        self.write_enabled=bool(write_enabled)
+        self.restore_btn.setEnabled(self.write_enabled)
+        self.refresh()
+
+    def refresh(self):
+        self.items.clear()
+        try:
+            result=self.tools.call("list_project_backups",{})
+            for entry in result.get("backups",[]):
+                try:
+                    stamp=datetime.strptime(entry["backup_id"], "%Y%m%d-%H%M%S-%f")
+                    date_label=stamp.strftime("%d.%m.%Y  ·  %H:%M:%S")
+                except (ValueError, TypeError):
+                    date_label=entry["backup_id"]
+                label=f'{date_label}\n{entry["path"]}  ·  {entry["bytes"]} Byte'
+                item=QListWidgetItem(label)
+                item.setSizeHint(QSize(350,58))
+                item.setData(Qt.UserRole,entry)
+                self.items.addItem(item)
+            if not self.items.count():
+                self.info.setText("Keine Sicherungen gefunden.")
+                self.preview.clear()
+        except Exception as exc:
+            QMessageBox.critical(self,"Sicherungen konnten nicht geladen werden",str(exc))
+
+    def selected(self):
+        item=self.items.currentItem()
+        return item.data(Qt.UserRole) if item else None
+
+    def show_selected(self,current,previous=None):
+        entry=self.selected()
+        if not entry:return
+        try:
+            result=self.tools.call("read_project_backup",entry)
+            self.info.setText(
+                f'<b>Sicherung:</b> {entry["backup_id"]}<br>'
+                f'<b>Datei:</b> {entry["path"]}<br>'
+                f'<b>Größe:</b> {entry["bytes"]} Byte')
+            self.info.setTextFormat(Qt.RichText)
+            self.preview.setPlainText(result.get("content",""))
+        except Exception as exc:
+            QMessageBox.warning(self,"Sicherung nicht lesbar",str(exc))
+
+    def compare_selected(self):
+        entry=self.selected()
+        if not entry:return
+        try:
+            result=self.tools.call("compare_project_backup",entry)
+            status="Identisch mit dem aktuellen Original." if result.get("identical") else "Unterschiede gefunden."
+            self.info.setText(
+                f'<b>Sicherung:</b> {entry["backup_id"]}<br>'
+                f'<b>Datei:</b> {entry["path"]}<br>'
+                f'<b>Vergleich:</b> {status}')
+            self.info.setTextFormat(Qt.RichText)
+            if result.get("identical"):
+                self.preview.setPlainText("ERGEBNIS: IDENTISCH\n\nSicherung und Original haben denselben Inhalt.\n\n"+result.get("current_content",""))
+            else:
+                self.preview.setPlainText("ERGEBNIS: UNTERSCHIEDE GEFUNDEN\n\n=== ÄNDERUNGEN ===\n"+result.get("diff","")+
+                                          "\n\n=== INHALT DER SICHERUNG ===\n"+result.get("backup_content","")+
+                                          "\n\n=== AKTUELLER ORIGINALINHALT ===\n"+result.get("current_content",""))
+        except Exception as exc:
+            QMessageBox.critical(self,"Vergleich fehlgeschlagen",str(exc))
+
+    def restore_selected(self):
+        entry=self.selected()
+        if not entry:return
+        if not self.write_enabled:
+            QMessageBox.warning(self,"Schreibzugriff fehlt","Aktiviere zuerst „KI darf Projektdateien ändern“.")
+            return
+        question=(f'Die Datei „{entry["path"]}“ wird auf den Stand der Sicherung\n'
+                  f'{entry["backup_id"]} zurückgesetzt.\n\n'
+                  'Der aktuelle Stand wird vorher zusätzlich gesichert und überprüft.\n'
+                  'Möchtest du fortfahren?')
+        if frage_de(self,"Sicherung wiederherstellen",question,QMessageBox.Yes|QMessageBox.No)!=QMessageBox.Yes:
+            return
+        try:
+            result=self.tools.call("restore_project_backup",entry)
+            QMessageBox.information(self,"Wiederherstellung erfolgreich",
+                f'Datei wiederhergestellt: {result["restored"]}\n\n'
+                f'Quelle: {result["from_backup"]}\n'
+                f'Zusätzliche Sicherung des vorherigen Stands:\n{result["safety_backup"]}\n\n'
+                'Die Sicherheitskopie wurde vor dem Zurückspielen geprüft.')
+            self.refresh()
+        except Exception as exc:
+            QMessageBox.critical(self,"Wiederherstellung fehlgeschlagen",str(exc))
+
+
+
+
+class VoiceInputWorker(QThread):
+    """Mikrofonaufnahme und Spracherkennung außerhalb des GUI-Threads."""
+    completed = Signal(str, str, str)  # transcript, error_kind, detail
+
+    def __init__(self, device_index=None, parent=None):
+        super().__init__(parent)
+        self.device_index = device_index
+
+    def run(self):
+        try:
+            import speech_recognition as sr
+        except ImportError as exc:
+            self.completed.emit("", "missing", str(exc))
+            return
+
+        try:
+            names = sr.Microphone.list_microphone_names()
+            if self.device_index is not None and not (0 <= self.device_index < len(names)):
+                self.completed.emit("", "device", "Das gespeicherte Mikrofon ist nicht mehr vorhanden.")
+                return
+            recognizer = sr.Recognizer()
+            with sr.Microphone(device_index=self.device_index) as source:
+                recognizer.adjust_for_ambient_noise(source, duration=0.35)
+                audio = recognizer.listen(source, timeout=8, phrase_time_limit=8)
+            transcript = recognizer.recognize_google(audio, language="de-DE")
+            self.completed.emit(transcript or "", "" if transcript else "empty", "")
+        except sr.WaitTimeoutError:
+            self.completed.emit("", "timeout", "")
+        except sr.UnknownValueError:
+            self.completed.emit("", "unknown", "")
+        except sr.RequestError as exc:
+            self.completed.emit("", "request", str(exc))
+        except Exception as exc:
+            self.completed.emit("", "error", str(exc))
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__(); self.config=load_config(); init_db(); self.current_chat=None; self.attachments=[]; self.worker=None; self.authworker=None; self.dark_theme=bool(self.config.get("dark_theme", True))
@@ -1391,6 +2047,27 @@ class MainWindow(QMainWindow):
         self.show_archived=False; self.chats=QListWidget(); self.chats.currentItemChanged.connect(self.select_chat); self.chats.setContextMenuPolicy(Qt.CustomContextMenu); self.chats.customContextMenuRequested.connect(self.chat_context_menu); sl.addWidget(self.chats,1)
         self.knowledgebtn=QPushButton("📚  Wissenssammlung"); self.knowledgebtn.clicked.connect(self.manage_knowledge); sl.addWidget(self.knowledgebtn)
         self.exportbtn=QPushButton("📤  Chats exportieren"); self.exportbtn.clicked.connect(self.export_chats); sl.addWidget(self.exportbtn)
+        self.workspacebtn=QPushButton("📂  Arbeitsbereich öffnen"); self.workspacebtn.clicked.connect(self.open_workspace); sl.addWidget(self.workspacebtn)
+        self.workspacepath=QLabel(); self.workspacepath.setObjectName("muted"); self.workspacepath.setWordWrap(True); self.workspacepath.setToolTip("Aktueller Speicherort für KI-erstellte Dateien"); sl.addWidget(self.workspacepath)
+        self.workspacechangebtn=QPushButton("Speicherort ändern …"); self.workspacechangebtn.clicked.connect(self.change_workspace); sl.addWidget(self.workspacechangebtn)
+        self.projectselectbtn=QPushButton("📁  Projektordner wählen …"); self.projectselectbtn.clicked.connect(self.select_project_folder); sl.addWidget(self.projectselectbtn)
+        self.projectbtn=QPushButton("🗂  Projektmanager öffnen"); self.projectbtn.clicked.connect(self.open_project_manager); sl.addWidget(self.projectbtn)
+        self.backupbtn=QPushButton("🛡  Sicherungen verwalten"); self.backupbtn.clicked.connect(self.open_backup_manager); sl.addWidget(self.backupbtn)
+        self.projectpath=QLabel(); self.projectpath.setObjectName("muted"); self.projectpath.setWordWrap(True); sl.addWidget(self.projectpath)
+        self.projectreadcheck=QCheckBox("KI darf Projektdateien lesen")
+        self.projectreadcheck.setChecked(bool(self.config.get("project_read_enabled",False)))
+        self.projectreadcheck.toggled.connect(self.set_project_read_access)
+        sl.addWidget(self.projectreadcheck)
+        self.projectwritecheck=QCheckBox("KI darf Projektdateien ändern")
+        self.projectwritecheck.setChecked(bool(self.config.get("project_write_enabled",False)))
+        self.projectwritecheck.setToolTip("Nur aktivieren, wenn Luna auf ausdrücklichen Auftrag Dateien im ausgewählten Projekt ändern darf. Vorhandene Dateien werden gesichert.")
+        self.projectwritecheck.toggled.connect(self.set_project_write_access)
+        sl.addWidget(self.projectwritecheck)
+        self.projectexeccheck=QCheckBox("KI darf Build-Befehle ausführen")
+        self.projectexeccheck.setChecked(bool(self.config.get("project_exec_enabled",False)))
+        self.projectexeccheck.setToolTip("Erlaubt Luna ausdrücklich angeforderte Buildskripte sowie begrenzte Paket- und ZIP-Prüfungen im aktuell ausgewählten Projektordner. Nur für vertrauenswürdige Projekte aktivieren.")
+        self.projectexeccheck.toggled.connect(self.set_project_exec_access)
+        sl.addWidget(self.projectexeccheck)
         self.importbtn=QPushButton("📥  Chats importieren"); self.importbtn.clicked.connect(self.import_chats); sl.addWidget(self.importbtn)
         self.themebtn=QPushButton("☀  Helles Design"); self.themebtn.clicked.connect(self.toggle_theme); sl.addWidget(self.themebtn)
         self.settingsbtn=QPushButton("⚙  Einstellungen"); self.settingsbtn.clicked.connect(self.settings); sl.addWidget(self.settingsbtn)
@@ -1407,6 +2084,11 @@ class MainWindow(QMainWindow):
         self.mode.currentTextChanged.connect(self.save_ui_preferences)
         self.web.toggled.connect(self.save_ui_preferences)
         top.addStretch()
+        self.helpbtn=QPushButton("❔"); self.helpbtn.setObjectName("helpTopButton")
+        self.helpbtn.setToolTip("Hilfe & Schritt-für-Schritt-Anleitung")
+        self.helpbtn.setFixedSize(34, 30)
+        self.helpbtn.clicked.connect(self.open_help)
+        top.addWidget(self.helpbtn)
         self.version_label=QLabel(f"LunaGPT v{APP_VERSION}"); self.version_label.setObjectName("versionLabel"); self.version_label.setToolTip("Installierte Programmversion"); top.addWidget(self.version_label)
         ml.addLayout(top)
         self.transcript=QTextBrowser(); self.transcript.setOpenExternalLinks(True); self.transcript.setObjectName("transcript"); self.transcript.setContextMenuPolicy(Qt.CustomContextMenu); self.transcript.customContextMenuRequested.connect(self.transcript_context_menu); ml.addWidget(self.transcript,1)
@@ -1442,8 +2124,265 @@ class MainWindow(QMainWindow):
         ml.addLayout(bottom)
         splitter=QSplitter(); splitter.addWidget(self.sidebar); splitter.addWidget(main); splitter.setStretchFactor(1,1); outer.addWidget(splitter); self.setCentralWidget(root)
         self.apply_theme()
+        self.update_workspace_display()
+        self.update_project_display()
         self.refresh_chats()
         self.update_api_status()
+
+    def open_help(self):
+        """Zeigt eine ausführliche Schritt-für-Schritt-Anleitung direkt in LunaGPT."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("LunaGPT – Hilfe & Schritt-für-Schritt-Anleitung")
+        dialog.resize(960, 780)
+        dialog.setMinimumSize(760, 620)
+        layout = QVBoxLayout(dialog)
+        guide = QTextBrowser(dialog)
+        guide.setOpenExternalLinks(True)
+        guide.setObjectName("helpGuide")
+        guide.setHtml(r"""
+        <html><head><meta charset="utf-8"><style>
+        body { font-family: sans-serif; line-height: 1.48; margin: 12px; }
+        h1 { font-size: 23px; margin-bottom: 4px; }
+        h2 { font-size: 18px; margin-top: 24px; padding-bottom: 5px; border-bottom: 1px solid #8886; }
+        h3 { font-size: 15px; margin-top: 16px; }
+        p, li { font-size: 13px; }
+        .tip { padding: 10px 12px; border-left: 4px solid #8b6bd6; background: rgba(130,100,190,.10); margin: 12px 0; }
+        .warn { padding: 10px 12px; border-left: 4px solid #d49a38; background: rgba(210,150,40,.10); margin: 12px 0; }
+        code { font-family: monospace; }
+        </style></head><body>
+        <h1>Willkommen bei LunaGPT</h1>
+        <p>Diese Anleitung führt dich vom ersten Chat bis zur Arbeit an einem eigenen Softwareprojekt. Du kannst sie jederzeit über
+        <b>❔-Schaltfläche oben rechts</b>, direkt links neben der Versionsanzeige, erneut öffnen.</p>
+
+        <h2>1. LunaGPT zum ersten Mal starten</h2>
+        <ol>
+          <li>Starte LunaGPT über das Anwendungsmenü oder mit dem Terminalbefehl <code>lunagpt</code>.</li>
+          <li>Klicke links auf <b>„Mit ChatGPT anmelden“</b>. Der Browser öffnet den Anmeldevorgang. Melde dich dort mit deinem Konto an und kehre anschließend zu LunaGPT zurück.</li>
+          <li>Wenn LunaGPT nach einem API-Schlüssel oder einer weiteren Einrichtung fragt, folge den Hinweisen im jeweiligen Dialog. ChatGPT-Anmeldung und API-Zugang sind unterschiedliche Zugangswege.</li>
+          <li>Über <b>„Einstellungen“</b> kannst du die verfügbaren Programmoptionen anpassen.</li>
+        </ol>
+
+        <h2>2. Einen normalen Chat führen</h2>
+        <ol>
+          <li>Klicke auf <b>„＋ Neuer Chat“</b> in der linken Seitenleiste.</li>
+          <li>Schreibe deine Frage unten in das Eingabefeld. Mit <b>Enter</b> sendest du die Nachricht; mit <b>Umschalt+Enter</b> fügst du einen Zeilenumbruch ein.</li>
+          <li>Mit <b>＋ Datei/Bild</b> kannst du Dateien oder Bilder an eine Nachricht anhängen. Prüfe vor dem Senden, ob der richtige Anhang angezeigt wird.</li>
+          <li>Mit <b>Websuche</b> kannst du – sofern dein verwendeter Zugang dies unterstützt – eine Websuche für die Anfrage aktivieren.</li>
+          <li>Der Modus <b>Allgemein</b> eignet sich für Alltagsfragen. <b>Programmiermodus</b> ist für Programmieraufgaben und technische Analysen gedacht.</li>
+          <li>Mit <b>🎙 Spracheingabe</b> kannst du eine Nachricht diktieren. Dafür müssen Mikrofon und optionale Spracherkennungs-Abhängigkeiten eingerichtet sein.</li>
+          <li><b>🔊 Vorlesen</b> liest die letzte Antwort vor; <b>Vorlesen beenden</b> stoppt die Wiedergabe.</li>
+        </ol>
+        <p>Deine Chats erscheinen links in der Chatliste. Über das Kontextmenü eines Chats stehen weitere Chat-Aktionen zur Verfügung. Archivierte Chats erreichst du über
+        <b>„Archivierte Chats anzeigen“</b>. Chats lassen sich außerdem über die Schaltflächen exportieren und importieren.</p>
+
+        <h2>3. Den Arbeitsbereich für erzeugte Dateien verstehen</h2>
+        <ol>
+          <li>Der Arbeitsbereich ist der Speicherort für Dateien, die LunaGPT im Rahmen deiner Chats erstellt.</li>
+          <li>Mit <b>„Arbeitsbereich öffnen“</b> öffnest du den Ordner des aktuellen Chats im Dateimanager.</li>
+          <li>Mit <b>„Speicherort ändern …“</b> kannst du den übergeordneten Speicherort anpassen.</li>
+          <li>Jeder Chat erhält einen eigenen Unterordner. Bereits erstellte Dateien werden beim Ändern des Speicherorts nicht automatisch verschoben.</li>
+        </ol>
+        <div class="tip"><b>Hinweis:</b> Der Arbeitsbereich für neu erzeugte Chat-Dateien ist nicht dasselbe wie ein ausgewählter Projektordner. Für die Analyse und Bearbeitung eines bestehenden Softwareprojekts verwendest du die folgenden Schritte.</div>
+
+        <h2>4. Ein eigenes Projekt beginnen – Schritt für Schritt</h2>
+        <ol>
+          <li><b>Projektordner vorbereiten:</b> Lege im Dateimanager einen Ordner für dein Projekt an oder verwende einen bereits vorhandenen Ordner. Wähle möglichst den obersten Ordner, der zum Projekt gehört.</li>
+          <li><b>Projekt auswählen:</b> Klicke in LunaGPT links auf <b>„📁 Projektordner wählen …“</b> und wähle genau diesen Ordner. Danach wird der ausgewählte Pfad links angezeigt.</li>
+          <li><b>Projektmanager öffnen:</b> Klicke auf <b>„🗂 Projektmanager öffnen“</b>. Dort kannst du die Projektdateien und Ordner ansehen und – je nach Funktion – Dateien im Editor öffnen.</li>
+          <li><b>Lesezugriff bewusst freigeben:</b> Aktiviere <b>„KI darf Projektdateien lesen“</b>, wenn Luna die Projektdateien untersuchen soll. Ohne diese Freigabe soll Luna keine Projektdateien lesen.</li>
+          <li><b>Mit einer Analyse beginnen:</b> Starte einen neuen Chat und schreibe zum Beispiel: <i>„Analysiere bitte zuerst die Struktur dieses Projekts. Ändere noch keine Dateien. Nenne mir die wichtigsten Dateien, mögliche Probleme und einen sinnvollen nächsten Schritt.“</i></li>
+          <li><b>Analyse abwarten:</b> Luna kann zunächst die Projektstruktur und Python-Dateien untersuchen und eine Syntaxprüfung durchführen. Eine solche statische Prüfung führt den Programmcode nicht aus und ersetzt keinen Praxistest.</li>
+          <li><b>Änderungsplan anfordern:</b> Bitte Luna, vor einer Änderung genau aufzulisten, welche Dateien sie ändern möchte, was geändert werden soll und welche Risiken bestehen.</li>
+          <li><b>Schreibzugriff nur bei Bedarf aktivieren:</b> Wenn du den vorgeschlagenen Plan geprüft hast und Änderungen möchtest, aktiviere <b>„KI darf Projektdateien ändern“</b>. Diese Freigabe erweitert den Zugriff. Aktiviere sie nur für ein Projekt, dem du vertraust.</li>
+          <li><b>Änderung ausdrücklich beauftragen:</b> Schreibe klar, welche geplanten Änderungen Luna durchführen darf. Die allgemeine Freigabe des Schreibzugriffs ist noch kein Auftrag, beliebige Änderungen vorzunehmen.</li>
+          <li><b>Ergebnis kontrollieren:</b> Lass Luna anschließend die geänderten Dateien und die durchgeführten Prüfungen nennen. Teste die Anwendung selbst auf deinem System.</li>
+        </ol>
+
+        <h2>5. Build-Befehle im ausgewählten Projektordner ausführen</h2>
+        <ol>
+          <li><b>Projekt auswählen:</b> Wähle zuerst links den Projektordner aus, in dem das Build- oder Prüfsystem liegt.</li>
+          <li><b>Freigaben einschalten:</b> Aktiviere „KI darf Projektdateien lesen“ und „KI darf Projektdateien ändern“. Aktiviere zusätzlich die separate Option <b>„KI darf Build-Befehle ausführen“</b>. Diese Build-Freigabe ist standardmäßig ausgeschaltet und wird beim Wechsel des Projektordners zurückgesetzt.</li>
+          <li><b>Build ausdrücklich beauftragen:</b> Bitte LunaGPT ausdrücklich, das vorhandene Build- oder Prüfskript auszuführen. Die eingeschaltete Freigabe allein startet keinen Befehl.</li>
+          <li><b>Ergebnis prüfen:</b> LunaGPT zeigt die begrenzte Befehlsausgabe an. Lass dir anschließend nennen, welche Dateien erzeugt wurden und ob ZIP-/DEB-Prüfungen erfolgreich waren.</li>
+        </ol>
+        <div class="warn"><b>Sicherheit:</b> Buildskripte sind ausführbarer Projektcode und können selbst weitere Aktionen auslösen. Aktiviere die Freigabe nur für vertrauenswürdige Projekte. Befehle laufen ohne <code>sudo</code>, ohne Shell-Verkettungen und mit Zeitlimit. Unterstützt werden freigegebene Skripte <code>build_deb.sh</code>, <code>build_release.sh</code> und <code>release.sh</code> sowie begrenzte Python-, dpkg-deb- und ZIP-Prüfungen. Die Funktion ist keine vollständige Betriebssystem-Sandbox.</div>
+
+        <h2>5. Sicherungen verwalten und Änderungen zurücknehmen</h2>
+        <ol>
+          <li>Vorhandene Dateien werden bei unterstützten Schreibvorgängen vor dem Überschreiben im Projektordner unter <code>.lunagpt-backups</code> gesichert.</li>
+          <li>Klicke auf <b>„🛡 Sicherungen verwalten“</b>, um vorhandene Sicherungen des ausgewählten Projekts anzusehen.</li>
+          <li>Wähle eine Sicherung aus. Du kannst den Inhalt ansehen und – sofern verfügbar – mit dem aktuellen Dateistand vergleichen.</li>
+          <li>Wenn du eine Sicherung zurückspielen möchtest, prüfe zuerst Datum und Inhalt sorgfältig und bestätige die Wiederherstellung im Dialog.</li>
+          <li>Vor einer Wiederherstellung wird der aktuelle Dateistand ebenfalls gesichert. So bleibt auch der Zustand vor dem Zurücksetzen erhalten.</li>
+        </ol>
+        <div class="warn"><b>Wichtig:</b> Sicherungen sind kein Ersatz für ein zusätzliches Backup des gesamten Projekts. Lege bei wichtigen Projekten regelmäßig eine Kopie auf einem zweiten Datenträger oder in deinem eigenen Backup-System an.</div>
+
+        <h2>6. Projektmanager, Wissenssammlung und Chats</h2>
+        <ul>
+          <li><b>Projektmanager:</b> Zum Durchsehen und Bearbeiten von Dateien im ausgewählten lokalen Projektordner.</li>
+          <li><b>Sicherungen verwalten:</b> Zum Prüfen, Vergleichen und Wiederherstellen unterstützter Dateisicherungen.</li>
+          <li><b>Wissenssammlung:</b> Zum Verwalten zusätzlicher Wissensinhalte, die Luna in passenden Anfragen berücksichtigen kann.</li>
+          <li><b>Chats exportieren/importieren:</b> Zum Sichern oder Übertragen von Chatverläufen. Importiere nur Dateien aus vertrauenswürdigen Quellen.</li>
+          <li><b>Design:</b> Über die Design-Schaltfläche wechselst du zwischen hellem und dunklem Erscheinungsbild.</li>
+        </ul>
+
+        <h2>7. Gute Arbeitsweise bei Softwareprojekten</h2>
+        <ol>
+          <li>Arbeite möglichst mit einer separaten Projektkopie oder einem Versionsverwaltungssystem wie Git.</li>
+          <li>Beginne jede neue Aufgabe mit einer Analyse und verlange einen konkreten Änderungsplan.</li>
+          <li>Ändere nur die Dateien, die für den Auftrag notwendig sind.</li>
+          <li>Bitte nach Änderungen um Syntaxprüfung und – wenn passend – gezielte Tests.</li>
+          <li>Prüfe die Änderungen selbst und teste die Anwendung auf deinem Raspberry Pi.</li>
+          <li>Schalte den Schreibzugriff wieder aus, wenn du ihn nicht mehr benötigst.</li>
+        </ol>
+
+        <h2>8. Wenn etwas nicht funktioniert</h2>
+        <ul>
+          <li><b>Keine Antwort:</b> Prüfe die Anmeldung bzw. den verwendeten Zugang und die Internetverbindung. Lies die angezeigte Fehlermeldung vollständig.</li>
+          <li><b>Spracheingabe funktioniert nicht:</b> Prüfe Mikrofonberechtigung, angeschlossenes Mikrofon, PyAudio und die optionale Installation von SpeechRecognition. Die Online-Erkennung benötigt Internetzugang.</li>
+          <li><b>Projekt wird nicht angezeigt:</b> Wähle den Projektordner erneut aus und kontrolliere, ob der Ordner noch existiert.</li>
+          <li><b>KI kann Dateien nicht lesen:</b> Prüfe, ob der richtige Projektordner ausgewählt und der Lesezugriff eingeschaltet ist.</li>
+          <li><b>KI kann Dateien nicht ändern:</b> Prüfe zusätzlich den Schreibzugriff. Erteile danach einen konkreten Auftrag für die geplante Änderung.</li>
+          <li><b>Wiederherstellung:</b> Wähle im Sicherungsmanager die passende Datei-Sicherung und kontrolliere den Inhalt vor der Bestätigung.</li>
+        </ul>
+        <p><b>Grundregel:</b> Erst auswählen, dann lesen lassen, Analyse prüfen, Änderung planen, gezielt freigeben und anschließend kontrollieren. So behältst du jederzeit die Übersicht über dein Projekt.</p>
+        </body></html>
+        """)
+        layout.addWidget(guide, 1)
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        close_btn = QPushButton("Schließen")
+        close_btn.clicked.connect(dialog.accept)
+        buttons.addWidget(close_btn)
+        layout.addLayout(buttons)
+        dialog.exec()
+
+    def current_workspace_base(self):
+        return Path(self.config.get("workspace_dir") or (Path.home() / "Documents" / "LunaGPT-Arbeitsbereich")).expanduser()
+
+    def current_chat_workspace(self):
+        safe_id = re.sub(r"[^A-Za-z0-9_-]", "", str(self.current_chat or ""))[:80] or "Noch-kein-Chat"
+        return self.current_workspace_base() / ("Chat-" + safe_id)
+
+    def update_workspace_display(self):
+        self.workspacepath.setText("Aktueller Chat:\n" + str(self.current_chat_workspace()))
+
+    def open_workspace(self):
+        path = self.current_chat_workspace()
+        path.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def change_workspace(self):
+        current = self.current_workspace_base()
+        selected = QFileDialog.getExistingDirectory(self, "Speicherort für erstellte Dateien auswählen", str(current))
+        if not selected:
+            return
+        self.config["workspace_dir"] = str(Path(selected).expanduser().resolve())
+        save_config(self.config)
+        self.update_workspace_display()
+        QMessageBox.information(self, "Speicherort geändert", "Neue Dateien werden ab jetzt hier gespeichert:\n\n" + self.config["workspace_dir"] + "\n\nBereits erstellte Dateien bleiben an ihrem bisherigen Speicherort.")
+
+    def current_project_dir(self):
+        value=str(self.config.get("project_dir") or "").strip()
+        return Path(value).expanduser() if value else None
+
+    def update_project_display(self):
+        project=self.current_project_dir()
+        if project and project.is_dir():
+            self.projectpath.setText("Projekt: " + str(project.resolve()))
+            self.projectbtn.setToolTip("Öffnet den Projektmanager für " + str(project.resolve()))
+            self.projectreadcheck.setEnabled(True)
+            self.projectwritecheck.setEnabled(bool(self.projectreadcheck.isChecked()))
+            self.projectexeccheck.setEnabled(bool(self.projectwritecheck.isChecked()))
+        else:
+            self.projectpath.setText("Kein Projektordner ausgewählt")
+            self.projectreadcheck.setChecked(False)
+            self.projectwritecheck.setChecked(False)
+            self.projectreadcheck.setEnabled(False)
+            self.projectwritecheck.setEnabled(False)
+            self.projectexeccheck.setChecked(False)
+            self.projectexeccheck.setEnabled(False)
+            self.config["project_read_enabled"]=False
+            self.config["project_write_enabled"]=False
+            self.config["project_exec_enabled"]=False
+            save_config(self.config)
+
+    def select_project_folder(self):
+        current=self.current_project_dir()
+        selected=QFileDialog.getExistingDirectory(self,"Lokalen Projektordner auswählen",str(current if current and current.is_dir() else Path.home()))
+        if not selected: return
+        self.config["project_dir"]=str(Path(selected).expanduser().resolve())
+        # A newly selected project starts with both AI permissions disabled.
+        self.config["project_read_enabled"]=False
+        self.config["project_write_enabled"]=False
+        self.config["project_exec_enabled"]=False
+        self.projectreadcheck.blockSignals(True)
+        self.projectwritecheck.blockSignals(True)
+        self.projectreadcheck.setChecked(False)
+        self.projectwritecheck.setChecked(False)
+        self.projectexeccheck.blockSignals(True)
+        self.projectexeccheck.setChecked(False)
+        self.projectexeccheck.blockSignals(False)
+        self.projectreadcheck.blockSignals(False)
+        self.projectwritecheck.blockSignals(False)
+        save_config(self.config)
+        self.update_project_display()
+
+    def open_backup_manager(self):
+        project=self.current_project_dir()
+        if not project or not project.is_dir():
+            QMessageBox.warning(self,"Kein Projektordner","Bitte zuerst einen gültigen Projektordner auswählen.")
+            return
+        if not self.projectreadcheck.isChecked():
+            QMessageBox.warning(self,"Lesezugriff fehlt","Aktiviere zuerst „KI darf Projektdateien lesen“.")
+            return
+        dialog=BackupManagerDialog(self,project,self.projectreadcheck.isChecked(),self.projectwritecheck.isChecked())
+        dialog.exec()
+
+    def open_project_manager(self):
+        project=self.current_project_dir()
+        if not project or not project.is_dir():
+            self.select_project_folder()
+            project=self.current_project_dir()
+        if not project or not project.is_dir(): return
+        dialog=ProjectFileDialog(project,self)
+        dialog.exec()
+
+    def set_project_read_access(self, enabled):
+        self.config["project_read_enabled"]=bool(enabled)
+        if not enabled:
+            self.projectwritecheck.blockSignals(True)
+            self.projectwritecheck.setChecked(False)
+            self.projectwritecheck.blockSignals(False)
+            self.config["project_write_enabled"]=False
+            self.config["project_exec_enabled"]=False
+            self.projectexeccheck.blockSignals(True)
+            self.projectexeccheck.setChecked(False)
+            self.projectexeccheck.blockSignals(False)
+        self.projectwritecheck.setEnabled(bool(enabled and self.current_project_dir() and self.current_project_dir().is_dir()))
+        self.projectexeccheck.setEnabled(bool(enabled and self.projectwritecheck.isChecked()))
+        save_config(self.config)
+
+    def set_project_write_access(self, enabled):
+        if enabled and not self.projectreadcheck.isChecked():
+            self.projectreadcheck.setChecked(True)
+        self.config["project_write_enabled"]=bool(enabled)
+        if not enabled:
+            self.projectexeccheck.blockSignals(True)
+            self.projectexeccheck.setChecked(False)
+            self.projectexeccheck.blockSignals(False)
+            self.config["project_exec_enabled"]=False
+        self.projectexeccheck.setEnabled(bool(enabled))
+        save_config(self.config)
+
+    def set_project_exec_access(self, enabled):
+        allowed=bool(enabled and self.projectwritecheck.isChecked() and self.projectreadcheck.isChecked() and self.current_project_dir() and self.current_project_dir().is_dir())
+        self.config["project_exec_enabled"]=allowed
+        if not allowed and enabled:
+            self.projectexeccheck.blockSignals(True)
+            self.projectexeccheck.setChecked(False)
+            self.projectexeccheck.blockSignals(False)
+        save_config(self.config)
 
     def open_image_generation(self):
         dialog = ImageGenerationDialog(self)
@@ -1463,6 +2402,12 @@ class MainWindow(QMainWindow):
             #logo {font-size:22px;font-weight:700;padding:8px 2px 14px;color:#ffffff;}
             #heading {font-size:20px;font-weight:600;color:#ffffff;}
             #versionLabel {font-size:12px;font-weight:700;color:#c9c2ff;background:#292e3d;border:1px solid #42495c;border-radius:7px;padding:5px 9px;}
+            QPushButton#helpTopButton {
+                min-width: 34px; max-width: 34px;
+                min-height: 30px; max-height: 30px;
+                padding: 0px; font-weight: bold;
+            }
+
             #status,#muted {color:#a7adbd;font-size:12px;}
             #thinkingIndicator {color:#d8ceff;background:#29243f;border:1px solid #514579;border-radius:10px;font-size:14px;font-weight:700;}
             QPushButton {background:#292e3d;border:1px solid #42495c;border-radius:9px;padding:9px 12px;text-align:left;color:#eef0f6;}
@@ -1677,7 +2622,7 @@ class MainWindow(QMainWindow):
                 if isinstance(item,dict) and item.get("title") and item.get("content"):
                     dball("INSERT INTO knowledge(title,content,created) VALUES(?,?,?)",(str(item["title"])[:200],str(item["content"])[:20000],item.get("created") or datetime.now().isoformat()),False)
                     knowledge_imported+=1
-            self.current_chat=None; self.show_archived=False; self.refresh_chats()
+            self.current_chat=None; self.update_workspace_display(); self.show_archived=False; self.refresh_chats()
             QMessageBox.information(self,"Import abgeschlossen",f"{imported} Chats und {knowledge_imported} Wissenseinträge importiert.")
         except Exception as e: QMessageBox.critical(self,"Import fehlgeschlagen",f"Die Datei konnte nicht importiert werden.\\n\\n{e}")
 
@@ -1805,10 +2750,13 @@ class MainWindow(QMainWindow):
         if added: self.status.setText(f"{len(self.attachments)} Datei(en) angehängt")
 
     def select_chat(self,item,prev=None):
-        if item: self.current_chat=item.data(Qt.UserRole); self.load_chat()
+        if item:
+            self.current_chat=item.data(Qt.UserRole)
+            self.update_workspace_display()
+            self.load_chat()
     def new_chat(self):
         cid=str(uuid.uuid4()); dball("INSERT INTO chats (id, title, created) VALUES(?,?,?)",(cid,"Neuer Chat",datetime.now().isoformat()),False)
-        self.current_chat=cid; self.refresh_chats(cid); self.input.clear()
+        self.current_chat=cid; self.update_workspace_display(); self.refresh_chats(cid); self.input.clear()
     def load_chat(self):
         if not self.current_chat:return
         rows=dball("SELECT role,content,created FROM messages WHERE chat_id=? ORDER BY id",(self.current_chat,))
@@ -1922,11 +2870,24 @@ class MainWindow(QMainWindow):
         self.load_chat(); self.sendbtn.setEnabled(False); self.progress.show(); self.status.setText("Luna denkt …"); self._set_thinking(True)
         self.worker=Worker(self.config,self.config.get("model",DEFAULT_MODEL),messages,self.web.isChecked(),attachments_for_worker,self.current_chat)
         self.worker.done.connect(self.reply); self.worker.failed.connect(self.error); self.worker.start()
-    def reply(self,answer):
-        dball("INSERT INTO messages(chat_id,role,content,created) VALUES(?,?,?,?)",(self.current_chat,"assistant",answer,datetime.now().isoformat()),False)
+    def reply(self, answer, originating_chat_id):
+        # Antworten immer dem Chat zuordnen, für den der Worker gestartet wurde.
+        if originating_chat_id:
+            dball("INSERT INTO messages(chat_id,role,content,created) VALUES(?,?,?,?)",
+                  (originating_chat_id, "assistant", answer, datetime.now().isoformat()), False)
+        is_current = str(self.current_chat or "") == str(originating_chat_id or "")
         self._set_thinking(False)
-        self.load_chat(); self.sendbtn.setEnabled(True); self.progress.hide(); self.status.setText("Antwort erhalten")
-        if self.config.get("speak"): self.speak(answer)
+        if is_current:
+            self.load_chat()
+            self.sendbtn.setEnabled(True)
+            self.progress.hide()
+            self.status.setText("Antwort erhalten")
+            if self.config.get("speak"):
+                self.speak(answer)
+        else:
+            self.status.setText("Antwort im ursprünglichen Chat gespeichert")
+            self.sendbtn.setEnabled(True)
+            self.progress.hide()
     def error(self,msg):
         self._set_thinking(False)
         self.sendbtn.setEnabled(True); self.progress.hide(); self.status.setText("Fehler")
@@ -2000,76 +2961,64 @@ class MainWindow(QMainWindow):
         event.accept()
 
     def voice_input(self):
-        """Start recording immediately with the microphone saved in Settings."""
+        """Startet die Spracheingabe; Aufnahme und Erkennung laufen im Hintergrund."""
+        saved_index = self.config.get("mic_device_index")
         try:
-            import speech_recognition as sr
-        except ImportError:
+            device_index = int(saved_index) if saved_index is not None else None
+        except (TypeError, ValueError):
+            device_index = None
+
+        if hasattr(self, "voice_worker") and self.voice_worker is not None and self.voice_worker.isRunning():
+            return
+
+        self.micbtn.setEnabled(False)
+        self.status.setText("Spracheingabe: Mikrofon wird vorbereitet …")
+        self.voice_worker = VoiceInputWorker(device_index, self)
+        self.voice_worker.completed.connect(self.on_voice_input_completed)
+        self.voice_worker.finished.connect(self.on_voice_input_worker_finished)
+        self.voice_worker.start()
+
+    def on_voice_input_completed(self, transcript, error_kind, detail):
+        if error_kind == "":
+            existing = self.input.toPlainText().strip()
+            self.input.setPlainText((existing + " " + transcript).strip())
+            self.status.setText("Spracheingabe fertig")
+        elif error_kind == "missing":
             QMessageBox.information(
                 self, "Spracheingabe",
-                "Für die Spracheingabe fehlen SpeechRecognition oder PyAudio.\n\n"
-                "Installiere sie im Terminal mit:\n"
+                "Für die Spracheingabe fehlt SpeechRecognition.\n\n"
+                "Installation für den System-Python unter Debian:\n"
                 "python3 -m pip install --user --break-system-packages SpeechRecognition\n"
                 "sudo apt install python3-pyaudio alsa-utils"
             )
-            return
-
-        try:
-            names = sr.Microphone.list_microphone_names()
-            saved_index = self.config.get("mic_device_index")
-            device_index = int(saved_index) if saved_index is not None else None
-            if device_index is not None and not (0 <= device_index < len(names)):
-                QMessageBox.warning(
-                    self, "Mikrofon nicht verfügbar",
-                    "Das gespeicherte Mikrofon ist nicht mehr vorhanden. Bitte wähle in den Einstellungen ein neues Mikrofon."
-                )
-                self.status.setText("Bereit")
-                return
-        except Exception as e:
-            QMessageBox.warning(
-                self, "Mikrofon nicht verfügbar",
-                "Die Mikrofonliste konnte nicht gelesen werden. Prüfe die Audioinstallation.\n\n" + str(e)
-            )
-            return
-
-        recognizer = sr.Recognizer()
-        try:
-            chosen_name = names[device_index] if device_index is not None else "Systemstandard"
-            self.micbtn.setEnabled(False)
-            self.status.setText(f"Spracheingabe: Aufnahme läuft ({chosen_name}) … Jetzt sprechen.")
-            QApplication.processEvents()
-            # Keine Auswahl- oder Bereitschafts-Dialoge: Aufnahme beginnt direkt nach dem Klick.
-            with sr.Microphone(device_index=device_index) as source:
-                recognizer.adjust_for_ambient_noise(source, duration=0.35)
-                audio = recognizer.listen(source, timeout=8, phrase_time_limit=8)
-            self.status.setText("Spracheingabe: Text wird erkannt …")
-            QApplication.processEvents()
-            transcript = recognizer.recognize_google(audio, language="de-DE")
-            if transcript:
-                existing = self.input.toPlainText().strip()
-                self.input.setPlainText((existing + " " + transcript).strip())
-                self.status.setText("Spracheingabe fertig")
-            else:
-                QMessageBox.information(self, "Spracheingabe", "Es wurde kein Text erkannt.")
-                self.status.setText("Bereit")
-        except sr.WaitTimeoutError:
+            self.status.setText("Bereit")
+        elif error_kind == "device":
+            QMessageBox.warning(self, "Mikrofon nicht verfügbar", detail + " Bitte wähle in den Einstellungen ein neues Mikrofon.")
+            self.status.setText("Bereit")
+        elif error_kind == "timeout":
             QMessageBox.information(self, "Spracheingabe", "Innerhalb von 8 Sekunden wurde keine Sprache erkannt. Bitte erneut versuchen.")
             self.status.setText("Bereit")
-        except sr.UnknownValueError:
+        elif error_kind == "unknown":
             QMessageBox.information(self, "Spracheingabe", "Die Aufnahme war möglich, aber der Online-Dienst konnte die Sprache nicht erkennen. Bitte deutlicher oder näher am Mikrofon sprechen.")
             self.status.setText("Bereit")
-        except sr.RequestError as e:
+        elif error_kind == "request":
             QMessageBox.warning(
                 self, "Spracheingabe – Internetdienst nicht erreichbar",
-                "Google Speech Recognition konnte nicht erreicht werden. Prüfe die Internetverbindung.\n\n" + str(e)
+                "Google Speech Recognition konnte nicht erreicht werden. Prüfe die Internetverbindung.\n\n" + detail
             )
             self.status.setText("Bereit")
-        except Exception as e:
-            QMessageBox.warning(self, "Spracheingabe fehlgeschlagen", str(e))
+        else:
+            QMessageBox.warning(self, "Spracheingabe fehlgeschlagen", detail)
             self.status.setText("Bereit")
-        finally:
-            self.micbtn.setEnabled(True)
-            if self.status.text().startswith("Spracheingabe:"):
-                self.status.setText("Bereit")
+
+    def on_voice_input_worker_finished(self):
+        self.micbtn.setEnabled(True)
+        if self.status.text().startswith("Spracheingabe:"):
+            self.status.setText("Bereit")
+        worker = self.voice_worker
+        self.voice_worker = None
+        if worker is not None:
+            worker.deleteLater()
 
 def shutil_which(cmd):
     import shutil
