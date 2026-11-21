@@ -1,3 +1,9 @@
+## 1.12.5
+
+- Englische MBROLA-Stimme als Laufzeitabhängigkeit ergänzt (`mbrola-en1`); deutsche Stimme `mbrola-de4` bleibt enthalten.
+- README und manuelle Installationsbefehle für beide MBROLA-Stimmen aktualisiert.
+- Versionsangaben auf 1.12.5 aktualisiert.
+
 ## 1.12.4
 
 - Letzte deutsche Beschriftung im englischen Projektmanager korrigiert: „Projektordner“ wird als „Project folder“ angezeigt.

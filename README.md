@@ -1,4 +1,4 @@
-# LunaGPT 1.12.4
+# LunaGPT 1.12.5
 
 Zweisprachiger Desktop-Chatclient (Deutsch/Englisch) für Linux und Raspberry Pi. Die Sprache der Benutzeroberfläche lässt sich in den Einstellungen wählen und wird dauerhaft gespeichert. LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
 
@@ -52,15 +52,15 @@ Benötigt wird Debian 13 / Raspberry Pi OS mit ARM64 oder eine kompatible Debian
 
 ```bash
 sudo apt update
-sudo apt install ./lunagpt_1.12.4_all.deb
+sudo apt install ./lunagpt_1.12.5_all.deb
 # Benötigte MBROLA-Sprachausgabe:
-sudo apt install mbrola mbrola-de4
+sudo apt install mbrola mbrola-de4 mbrola-en1
 ```
 
 Falls `apt` fehlende Abhängigkeiten meldet, installiert es diese normalerweise automatisch. Alternativ können die Laufzeitpakete vorab installiert werden:
 
 ```bash
-sudo apt install python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4
+sudo apt install python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4 mbrola-en1
 ```
 
 Start über das Anwendungsmenü oder im Terminal:
@@ -80,7 +80,7 @@ Das DEB installiert den Starter nach `/usr/bin/lunagpt` und die Anwendung nach `
 ```bash
 cd LunaGPT
 sudo apt update
-sudo apt install python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4
+sudo apt install python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4 mbrola-en1
 python3 lunagpt/main.py
 ```
 
@@ -88,13 +88,13 @@ Alternativ kann `./install.sh` verwendet werden. Das Skript installiert die Syst
 
 ## MBROLA-Sprachausgabe (Standard)
 
-LunaGPT verwendet die deutsche MBROLA-Stimme `de4` als vorgesehene Sprachausgabe. Dafür müssen `mbrola` und `mbrola-de4` installiert sein. eSpeak-NG bleibt als technische Schnittstelle erhalten, über die LunaGPT die MBROLA-Stimme ansteuert:
+LunaGPT verwendet für Deutsch die MBROLA-Stimme `de4` und für Englisch die britisch-englische MBROLA-Stimme `en1`. Dafür müssen `mbrola`, `mbrola-de4` und `mbrola-en1` installiert sein. eSpeak-NG bleibt als technische Schnittstelle erhalten, über die LunaGPT die jeweils passende MBROLA-Stimme ansteuert:
 
 ```bash
-sudo apt install mbrola mbrola-de4
+sudo apt install mbrola mbrola-de4 mbrola-en1
 ```
 
-MBROLA ist für die vorgesehene deutsche Sprachausgabe erforderlich. Die eigentliche Stimme ist MBROLA `de4`; eSpeak-NG dient lediglich als technische Ansteuerung. Falls `apt` `mbrola-de4` nicht findet, prüfe, ob die Debian-Paketquelle `contrib` aktiviert ist. Die Stimme wird lokal installiert und benötigt zur Wiedergabe keine Internetverbindung.
+MBROLA stellt die Stimmen für beide Oberflächensprachen bereit: `de4` für Deutsch und `en1` für britisches Englisch. eSpeak-NG dient als technische Ansteuerung. Falls `apt` eines der MBROLA-Stimmenpakete nicht findet, prüfe, ob die Debian-Paketquellen `contrib` und `non-free` aktiviert sind. Die Stimmen werden lokal installiert und benötigen zur Wiedergabe keine Internetverbindung.
 
 ## Spracheingabe (optional)
 
@@ -119,7 +119,8 @@ Debian schützt die systemweite Python-Installation vor pip-Änderungen. Der Bef
 | alsa-utils | Audio-Werkzeuge | `alsa-utils` |
 | espeak-ng | Technische Schnittstelle zur Ansteuerung der MBROLA-Stimme | `espeak-ng` |
 | MBROLA | Sprachausgabe-Engine | `mbrola` |
-| MBROLA Deutsch (de4) | Deutsche MBROLA-Stimme (vorgesehen) | `mbrola-de4` |
+| MBROLA Deutsch (de4) | Deutsche MBROLA-Stimme | `mbrola-de4` |
+| MBROLA Englisch (en1) | Britisch-englische MBROLA-Stimme | `mbrola-en1` |
 
 `requirements.txt` enthält die Python-Kernabhängigkeiten für eine pip-basierte Entwicklungsumgebung. Für Debian wird die Installation der Systempakete über `apt` bevorzugt.
 
@@ -137,8 +138,8 @@ Benötigt wird `dpkg-deb`. Die Paketversion wird automatisch aus `lunagpt/versio
 
 ```bash
 python3 -m py_compile lunagpt/main.py lunagpt/siwc.py lunagpt/version.py
-dpkg-deb -I dist/lunagpt_1.12.4_all.deb
-dpkg-deb -c dist/lunagpt_1.12.4_all.deb
+dpkg-deb -I dist/lunagpt_1.12.5_all.deb
+dpkg-deb -c dist/lunagpt_1.12.5_all.deb
 ```
 
 ## Projektstruktur
