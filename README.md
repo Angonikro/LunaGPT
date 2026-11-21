@@ -1,4 +1,4 @@
-# LunaGPT 1.11.6
+# LunaGPT 1.12.0
 
 Deutschsprachiger Desktop-Chatclient für Linux und Raspberry Pi. LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
 
@@ -14,12 +14,19 @@ Deutschsprachiger Desktop-Chatclient für Linux und Raspberry Pi. LunaGPT bietet
 - Lokaler Projekt-Arbeitsmodus mit Analyse, Änderungsplan und Syntaxprüfung
 - Anmeldung über „Mit ChatGPT anmelden“ im Browser
 - Lokale Chat-Historie und Datei-Anhänge
+- Auf ausdrückliche Bitte lokale Suche im vollständigen Verlauf des geöffneten Chats; normale Anfragen bleiben unverändert
 - Sprachein- und -ausgabe; die Mikrofonaufnahme und Spracherkennung laufen in einem Hintergrundthread
 - KI-Dateiwerkzeuge im lokalen Arbeitsbereich `~/Documents/LunaGPT-Arbeitsbereich/`
 - Integrierter Projektmanager mit Dateibaum und Editor
 - Optionaler KI-Lesezugriff und separat freischaltbarer Schreibzugriff auf ausgewählte Projektordner
 - Automatische Sicherung vorhandener Dateien vor Änderungen
 - Online-Bildgenerierung über AI Horde
+
+## Punktuelle Dateiänderungen (1.11.7)
+
+Für kleine Änderungen an vorhandenen Projektdateien verwendet LunaGPT bevorzugt `patch_project_file`. Dabei wird ein exakt angegebener Textabschnitt ersetzt, statt eine große Datei vollständig neu zu schreiben. Der Patch wird nur angewendet, wenn der alte Abschnitt genau so oft vorkommt wie erwartet (standardmäßig genau einmal). Bei fehlenden oder mehrdeutigen Treffern bleibt die Originaldatei unverändert.
+
+Vor dem Schreiben wird eine Sicherung unter `.lunagpt-backups/` erstellt und bytegenau verifiziert. Python-Dateien werden vor dem Speichern mit dem AST-Parser auf Syntaxfehler geprüft. Anschließend kontrolliert LunaGPT den gespeicherten Inhalt und erhält die Dateiberechtigungen. Die Funktion benötigt weiterhin die ausdrücklich aktivierte Projekt-Schreibfreigabe. Für neue Dateien oder ausdrücklich vollständige Ersetzungen bleibt `write_project_file` verfügbar.
 
 ## Datenschutz und Dateiarbeit
 
@@ -40,7 +47,7 @@ Benötigt wird Debian 13 / Raspberry Pi OS mit ARM64 oder eine kompatible Debian
 
 ```bash
 sudo apt update
-sudo apt install ./lunagpt_1.11.6_all.deb
+sudo apt install ./lunagpt_1.12.0_all.deb
 # Benötigte MBROLA-Sprachausgabe:
 sudo apt install mbrola mbrola-de4
 ```
@@ -119,14 +126,14 @@ Im Projektverzeichnis:
 ./build_deb.sh
 ```
 
-Benötigt wird `dpkg-deb`. Die Paketversion wird automatisch aus `lunagpt/version.py` gelesen; die Versionsnummer muss im Build-Skript nicht separat gepflegt werden. Das fertige Paket liegt unter `dist/lunagpt_1.11.6_all.deb`.
+Benötigt wird `dpkg-deb`. Die Paketversion wird automatisch aus `lunagpt/version.py` gelesen; die Versionsnummer muss im Build-Skript nicht separat gepflegt werden. Das fertige Paket liegt unter `dist/lunagpt_1.12.0_all.deb`.
 
 ## Prüfen
 
 ```bash
 python3 -m py_compile lunagpt/main.py lunagpt/siwc.py lunagpt/version.py
-dpkg-deb -I dist/lunagpt_1.11.6_all.deb
-dpkg-deb -c dist/lunagpt_1.11.6_all.deb
+dpkg-deb -I dist/lunagpt_1.12.0_all.deb
+dpkg-deb -c dist/lunagpt_1.12.0_all.deb
 ```
 
 ## Projektstruktur

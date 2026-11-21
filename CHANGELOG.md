@@ -1,3 +1,28 @@
+## 1.12.0
+
+- Fragen nach dem ersten Wort verwenden jetzt gezielt die chronologisch älteste Nutzernachricht des geöffneten Chats statt einer nach Relevanz sortierten Trefferliste.
+- Ergebnis wird anhand der Nachrichten-ID bestimmt; dadurch kann die erste Nutzernachricht nicht durch das Trefferlimit herausfallen.
+
+## 1.11.9
+
+- Verlaufssuche korrigiert: Suchbegriffe werden mit dem Regex `\\w` korrekt aus normalen Wörtern extrahiert.
+- Dadurch kann LunaGPT bei ausdrücklicher Bitte ältere Chatstellen zuverlässig nach konkreten Begriffen durchsuchen.
+
+## 1.11.8
+
+- Verlaufssuche auf ausdrücklichen Wunsch ergänzt: LunaGPT durchsucht lokal alle Nachrichten des aktuell geöffneten Chats und übermittelt nur passende Fundstellen an die KI.
+- Normale Anfragen verwenden weiterhin nur den bisherigen aktuellen Nachrichtenkontext.
+
+## 1.11.7
+
+- Neues Werkzeug `patch_project_file` für gezielte Textänderungen an vorhandenen Projektdateien ergänzt.
+- Exakte Trefferprüfung verhindert Änderungen bei fehlendem oder mehrdeutigem Kontext.
+- Vor jeder Änderung wird eine Sicherung erstellt und vollständig verifiziert.
+- Python-Patches werden vor dem Schreiben auf Syntaxfehler geprüft.
+- Atomisches Speichern, Nachkontrolle des Datei-Inhalts und Erhalt der Dateiberechtigungen.
+- LunaGPT bevorzugt bei kleinen Änderungen an großen Dateien jetzt punktuelle Patches statt vollständiges Überschreiben.
+- Schreibfreigabe und Projektpfad-Sicherheitsprüfungen bleiben verbindlich.
+
 ## 1.11.6
 
 - `mbrola` und `mbrola-de4` als verbindliche Debian-Abhängigkeiten ergänzt.
