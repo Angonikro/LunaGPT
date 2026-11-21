@@ -1,3 +1,30 @@
+## 1.12.4
+
+- Letzte deutsche Beschriftung im englischen Projektmanager korrigiert: „Projektordner“ wird als „Project folder“ angezeigt.
+- Versionsangaben, README und Debian-Paketmetadaten auf 1.12.4 aktualisiert.
+
+## 1.12.3
+
+- Die LunaGPT-Benutzeroberfläche unterstützt jetzt Deutsch und Englisch mit dauerhaft gespeicherter Sprachauswahl in den Einstellungen. Der Wechsel aktualisiert Fenster, Menüs, Dialoge, Hilfe, Status- und Fehlermeldungen und erhält den geöffneten Chat samt Entwurf und Anhängen.
+- Programmier- und Allgemeinmodus behalten ihre internen Moduskennungen unabhängig von der sichtbaren Sprache; die Spracheingabe nutzt passend zur UI Deutsch oder Englisch.
+- Vollständige App-Zweisprachigkeit als ausführbarer Programmierauftrag präzisiert: LunaGPT soll die Übersetzungsarbeit tatsächlich über Projektwerkzeuge durchführen, statt bei Analyse, Plan oder Sprachwahl stehenzubleiben.
+- Der Auftrag wird auch über kurze Folgeanweisungen wie „mach weiter“ oder „nächster Schritt“ aus dem Chatverlauf fortgesetzt. Bereits erledigte Änderungen bleiben erhalten und werden nicht eigenmächtig zurückgerollt.
+- Gilt in Chat- und Programmiermodus; umfasst Menüs, Dialoge, Einstellungen, Kontextmenüs, Hilfe und Laufzeitmeldungen.
+- Projekt-Schreib- und Build-Freigaben berücksichtigen jetzt ausdrücklich die Fortsetzung eines noch offenen Auftrags, ohne die bestehenden Berechtigungen zu umgehen.
+- Versionsnummer auf 1.12.3 erhöht.
+
+## 1.12.2
+
+- Programmiermodus präzisiert: Ein ausdrücklich erteilter Auftrag zur vollständigen Zweisprachigkeit (z. B. Deutsch/Englisch) gilt selbst als Umsetzungsfreigabe. LunaGPT soll intern planen und die betroffenen Projektdateien tatsächlich bearbeiten, statt nur einen Plan vorzulegen und auf eine zweite Zustimmung zu warten.
+- Sprachumstellungen müssen systematisch alle UI-Bereiche berücksichtigen: Menüs, Dialoge, Einstellungen, Kontextmenüs, Hilfetexte und Meldungen; vorhandene Funktionen und Sicherheitsfreigaben bleiben erhalten.
+- Werkzeugschleife für umfangreiche, ausdrücklich beauftragte Projektarbeiten von 30 auf 80 Schritte erweitert.
+- Bestehende Projekt- und Sicherheitsfreigaben sowie der übrige Arbeitsmodus bleiben unverändert.
+
+## 1.12.1
+
+- Hauptfenster beim ersten Start um etwa 2 cm in der Höhe vergrößert.
+- Zuletzt verwendete Fenstergeometrie wird beim Beenden gespeichert und beim nächsten Start wiederhergestellt.
+
 ## 1.12.0
 
 - Fragen nach dem ersten Wort verwenden jetzt gezielt die chronologisch älteste Nutzernachricht des geöffneten Chats statt einer nach Relevanz sortierten Trefferliste.
@@ -97,6 +124,12 @@
 - Behebt den Laufzeitfehler „done(QString) only accepts 1 argument(s), 2 given“.
 
 # Changelog
+
+## 1.12.4
+
+- Letzte verbliebene deutsche Beschriftung im englischen Projektmanager korrigiert: „Projektordner“ wird als „Project folder“ angezeigt.
+- Zweisprachige Oberfläche Deutsch/Englisch weiter vervollständigt; Paket- und Versionsmetadaten aktualisiert.
+
 
 ## 1.10.4
 - Sichere, exklusiv erzeugte temporäre Dateien für Projektänderungen und Editor-Speicherungen.

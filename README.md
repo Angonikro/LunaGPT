@@ -1,17 +1,22 @@
-# LunaGPT 1.12.0
+# LunaGPT 1.12.4
 
-Deutschsprachiger Desktop-Chatclient für Linux und Raspberry Pi. LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
+Zweisprachiger Desktop-Chatclient (Deutsch/Englisch) für Linux und Raspberry Pi. Die Sprache der Benutzeroberfläche lässt sich in den Einstellungen wählen und wird dauerhaft gespeichert. LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
 
 ![LunaGPT](lunagpt1.png)
 
 [Github Seite](https://github.com/Angonikro/LunaGPT/)
 
+## Sprache der Benutzeroberfläche
+
+LunaGPT unterstützt Deutsch und Englisch. Öffne **Einstellungen**, wähle unter **Sprache der Benutzeroberfläche** Deutsch oder English und speichere die Auswahl. Das Fenster wird anschließend in der gewählten Sprache neu aufgebaut. Chat, aktuelle Eingabe und angehängte Dateien bleiben beim Sprachwechsel erhalten. Die Spracheinstellung wird lokal gespeichert und beim nächsten Start wiederverwendet.
+
 ## Funktionen
 
-- Ausführliche integrierte Hilfe mit Schritt-für-Schritt-Anleitung für Chats, Arbeitsbereich, Projektstart und Paketierung\n- Projektpaketierung direkt im ausgewählten Projektordner: vorhandenes build_release.sh ohne sudo ausführen und ZIP/DEB anschließend prüfen
+- Ausführliche integrierte Hilfe mit Schritt-für-Schritt-Anleitung für Chats, Arbeitsbereich, Projektstart und Paketierung
+- Projektpaketierung direkt im ausgewählten Projektordner: vorhandenes build_release.sh ohne sudo ausführen und ZIP/DEB anschließend prüfen
 
 - Interne Projektsicherungen auflisten, lesen, vergleichen und nach Bestätigung wiederherstellen
-- Lokaler Projekt-Arbeitsmodus mit Analyse, Änderungsplan und Syntaxprüfung
+- Lokaler Projekt-Arbeitsmodus mit Analyse, gezielter Mehrdatei-Bearbeitung, Sicherungen und Syntaxprüfung
 - Anmeldung über „Mit ChatGPT anmelden“ im Browser
 - Lokale Chat-Historie und Datei-Anhänge
 - Auf ausdrückliche Bitte lokale Suche im vollständigen Verlauf des geöffneten Chats; normale Anfragen bleiben unverändert
@@ -47,7 +52,7 @@ Benötigt wird Debian 13 / Raspberry Pi OS mit ARM64 oder eine kompatible Debian
 
 ```bash
 sudo apt update
-sudo apt install ./lunagpt_1.12.0_all.deb
+sudo apt install ./lunagpt_1.12.4_all.deb
 # Benötigte MBROLA-Sprachausgabe:
 sudo apt install mbrola mbrola-de4
 ```
@@ -126,14 +131,14 @@ Im Projektverzeichnis:
 ./build_deb.sh
 ```
 
-Benötigt wird `dpkg-deb`. Die Paketversion wird automatisch aus `lunagpt/version.py` gelesen; die Versionsnummer muss im Build-Skript nicht separat gepflegt werden. Das fertige Paket liegt unter `dist/lunagpt_1.12.0_all.deb`.
+Benötigt wird `dpkg-deb`. Die Paketversion wird automatisch aus `lunagpt/version.py` gelesen; die Versionsnummer muss im Build-Skript nicht separat gepflegt werden. Das fertige Paket liegt unter `dist/lunagpt_1.12.2_all.deb`.
 
 ## Prüfen
 
 ```bash
 python3 -m py_compile lunagpt/main.py lunagpt/siwc.py lunagpt/version.py
-dpkg-deb -I dist/lunagpt_1.12.0_all.deb
-dpkg-deb -c dist/lunagpt_1.12.0_all.deb
+dpkg-deb -I dist/lunagpt_1.12.4_all.deb
+dpkg-deb -c dist/lunagpt_1.12.4_all.deb
 ```
 
 ## Projektstruktur
