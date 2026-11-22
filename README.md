@@ -1,4 +1,4 @@
-# LunaGPT 1.12.5
+# LunaGPT 1.12.8
 
 Zweisprachiger Desktop-Chatclient (Deutsch/Englisch) für Linux und Raspberry Pi. Die Sprache der Benutzeroberfläche lässt sich in den Einstellungen wählen und wird dauerhaft gespeichert. LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
 
@@ -6,11 +6,20 @@ Zweisprachiger Desktop-Chatclient (Deutsch/Englisch) für Linux und Raspberry Pi
 
 [Github Seite](https://github.com/Angonikro/LunaGPT/)
 
+## Projektmanager-Editor
+
+- Zeilennummern und Hervorhebung der aktuellen Zeile.
+- Python-Syntaxhervorhebung sowie farbige JSON-Schlüssel, Werte und Zahlen.
+- Suchen, Weitersuchen, Ersetzen und Alle ersetzen.
+- Ungespeicherte Änderungen werden mit einem Punkt vor dem Dateipfad markiert.
+- Änderungen an der geöffneten Datei durch andere Programme werden erkannt; bei ungespeicherten eigenen Änderungen fragt LunaGPT vor dem Neuladen.
+- Bildvorschau für PNG, JPEG, BMP, GIF, WebP und TIFF. INI-, TOML-, YAML- und andere Text-Konfigurationsdateien können direkt im Editor angesehen und bearbeitet werden.
+
 ## Sprache der Benutzeroberfläche
 
 LunaGPT unterstützt Deutsch und Englisch. Öffne **Einstellungen**, wähle unter **Sprache der Benutzeroberfläche** Deutsch oder English und speichere die Auswahl. Das Fenster wird anschließend in der gewählten Sprache neu aufgebaut. Chat, aktuelle Eingabe und angehängte Dateien bleiben beim Sprachwechsel erhalten. Die Spracheinstellung wird lokal gespeichert und beim nächsten Start wiederverwendet.
 
-## Funktionen
+## Funktionen\n\n- Zweisprachiges Rechtsklick-Kontextmenü im Projektmanager-Editor (Deutsch/Englisch) mit Rückgängig, Wiederholen, Ausschneiden, Kopieren, Einfügen, Löschen und Alles auswählen.
 
 - Ausführliche integrierte Hilfe mit Schritt-für-Schritt-Anleitung für Chats, Arbeitsbereich, Projektstart und Paketierung
 - Projektpaketierung direkt im ausgewählten Projektordner: vorhandenes build_release.sh ohne sudo ausführen und ZIP/DEB anschließend prüfen
@@ -52,7 +61,7 @@ Benötigt wird Debian 13 / Raspberry Pi OS mit ARM64 oder eine kompatible Debian
 
 ```bash
 sudo apt update
-sudo apt install ./lunagpt_1.12.5_all.deb
+sudo apt install ./lunagpt_1.12.8_all.deb
 # Benötigte MBROLA-Sprachausgabe:
 sudo apt install mbrola mbrola-de4 mbrola-en1
 ```
@@ -138,8 +147,8 @@ Benötigt wird `dpkg-deb`. Die Paketversion wird automatisch aus `lunagpt/versio
 
 ```bash
 python3 -m py_compile lunagpt/main.py lunagpt/siwc.py lunagpt/version.py
-dpkg-deb -I dist/lunagpt_1.12.5_all.deb
-dpkg-deb -c dist/lunagpt_1.12.5_all.deb
+dpkg-deb -I dist/lunagpt_1.12.8_all.deb
+dpkg-deb -c dist/lunagpt_1.12.8_all.deb
 ```
 
 ## Projektstruktur
@@ -153,3 +162,9 @@ dpkg-deb -c dist/lunagpt_1.12.5_all.deb
 - `CHANGELOG.md` – Versionshistorie
 
 73 de DO2QG Andreas
+
+## Automatischer Wissensaufbau
+
+LunaGPT kann wichtige, längerfristig nützliche Informationen aus Gesprächen automatisch in der lokalen Wissenssammlung ablegen. Dazu gehören beispielsweise technische Lösungen, Projektentscheidungen und dauerhafte Arbeitspräferenzen. Die Funktion ist standardmäßig aktiviert und lässt sich unter **Einstellungen** über **„Wichtige Informationen automatisch in der Wissenssammlung speichern“** ausschalten.
+
+Es werden nicht pauschal komplette Chats gespeichert: LunaGPT soll nur ausgewählte Erkenntnisse sichern, Duplikate vermeiden und keine Zugangsdaten oder sensiblen persönlichen Angaben übernehmen. Die Einträge bleiben lokal in der LunaGPT-Datenbank und werden bei späteren passenden Anfragen als Kontext eingebunden. Gespeicherte Einträge kannst du über **„Wissenssammlung“** ansehen und löschen.
