@@ -8,7 +8,7 @@
 - Fehler beim Öffnen des Projektmanagers behoben: Qt-6-Property für die Hervorhebung der aktuellen Editorzeile korrekt referenziert.
 - Versionsangaben aktualisiert.
 
-## 1.12.7
+## 1.12.6 - 1.12.7
 
 - Projektmanager-Editor: Zeilennummern und Hervorhebung der aktuellen Zeile ergänzt.
 - Python- und JSON-Syntaxhervorhebung ergänzt.
@@ -18,7 +18,7 @@
 - Bildvorschau für gängige Bildformate ergänzt; Konfigurationsdateien bleiben direkt im Texteditor bearbeitbar.
 - Versionsangaben und README aktualisiert.
 
-## 1.12.6 - Projektmanager: eigenes zweisprachiges Rechtsklick-Menü im Datei-Editor ergänzt.\n- Kontextmenü bietet Rückgängig, Wiederholen, Ausschneiden, Kopieren, Einfügen, Löschen und Alles auswählen; nicht verfügbare Aktionen werden deaktiviert.\n- Versionsangaben und Dokumentation aktualisiert.\n\n## 1.12.5
+## 1.12.5 - Projektmanager: eigenes zweisprachiges Rechtsklick-Menü im Datei-Editor ergänzt.\n- Kontextmenü bietet Rückgängig, Wiederholen, Ausschneiden, Kopieren, Einfügen, Löschen und Alles auswählen; nicht verfügbare Aktionen werden deaktiviert.\n- Versionsangaben und Dokumentation aktualisiert.\n\n## 1.12.5
 
 - Englische MBROLA-Stimme als Laufzeitabhängigkeit ergänzt (`mbrola-en1`); deutsche Stimme `mbrola-de4` bleibt enthalten.
 - README und manuelle Installationsbefehle für beide MBROLA-Stimmen aktualisiert.
