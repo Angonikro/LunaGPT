@@ -1,4 +1,13 @@
+# Änderungsprotokoll
+
+## 1.12.9
+
+- Chat-Arbeitsbereiche werden pro Chat eindeutig verwaltet; beim Start wird der zuletzt aktive Chat wiederhergestellt.
+- Projektordner-Auswahl wird chatbezogen gespeichert, sodass Chats getrennt an unterschiedlichen Projekten arbeiten können. Beim Chatwechsel werden Projektfreigaben aus Sicherheitsgründen zurückgesetzt.
+- Neue Funktion `create_project_zip`: ZIP-Dateien können direkt aus dem ausgewählten Projektordner erstellt und anschließend geprüft werden; Chat-Arbeitsbereich und Projektordner bleiben getrennt.
+
 ## 1.12.8 – Erweiterung Wissenssammlung
+
 - Automatischer Wissensaufbau ergänzt: LunaGPT kann wichtige, langfristig nützliche Projektentscheidungen, technische Lösungen und Arbeitspräferenzen selbstständig in der lokalen Wissenssammlung speichern.
 - Automatische Speicherung ist standardmäßig aktiviert und kann in den Einstellungen jederzeit ausgeschaltet werden.
 - Duplikate werden vor dem Speichern erkannt; flüchtige Unterhaltung, Zugangsdaten und sensible persönliche Angaben sollen nicht gespeichert werden.

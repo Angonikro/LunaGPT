@@ -1,5 +1,5 @@
 #!/bin/sh
-# LunaGPT release line 1.12.8; actual package version comes from lunagpt/version.py.
+# LunaGPT release line 1.12.9; actual package version comes from lunagpt/version.py.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 OUT="$ROOT/dist"
@@ -13,7 +13,8 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE/DEBIAN" "$STAGE/usr/bin" "$STAGE/usr/share/lunagpt/lunagpt" \
   "$STAGE/usr/share/applications" "$STAGE/usr/share/icons/hicolor/256x256/apps" "$OUT"
 sed "s/^Version: .*/Version: $VERSION/" "$ROOT/debian/control" > "$STAGE/DEBIAN/control"
-chmod g-s "$STAGE/DEBIAN" || true
+find "$STAGE" -type d -exec chmod g-s {} +
+chmod g-s "$STAGE" "$STAGE/DEBIAN" || true
 chmod 755 "$STAGE/DEBIAN"
 cp "$ROOT/bin/lunagpt" "$STAGE/usr/bin/lunagpt"
 chmod 755 "$STAGE/usr/bin/lunagpt"

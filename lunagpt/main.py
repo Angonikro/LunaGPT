@@ -393,6 +393,7 @@ AGENT_TOOLS = [
  {"type":"function","name":"write_workspace_file","description":"Erstellt oder aktualisiert eine Datei im LunaGPT-Arbeitsbereich. Verwende relative Pfade, z.B. Projekt/README.md.","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"],"additionalProperties":False}},
  {"type":"function","name":"set_workspace_executable","description":"Setzt bei einer ausdrücklich angeforderten Projektaufgabe das Ausführungsrecht für ein vorhandenes Shell-Skript im LunaGPT-Arbeitsbereich. Nur Dateien mit der Endung .sh innerhalb des Arbeitsbereichs sind erlaubt; es werden keine Dateien außerhalb des Arbeitsbereichs verändert.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Relativer Pfad zu einer vorhandenen .sh-Datei im Arbeitsbereich"}},"required":["path"],"additionalProperties":False}},
  {"type":"function","name":"create_zip","description":"Packt ein Projektverzeichnis oder ausgewählte Dateien aus dem LunaGPT-Arbeitsbereich in eine ZIP-Datei. Der Ausgabe-ZIP-Pfad ist relativ zum Arbeitsbereich.","parameters":{"type":"object","properties":{"output":{"type":"string"},"paths":{"type":"array","items":{"type":"string"},"description":"Zu packende Dateien/Verzeichnisse, relativ zum Arbeitsbereich"},"top_level_folder":{"type":"string","description":"Optionaler Ordnername, unter dem die Inhalte im ZIP liegen"}},"required":["output","paths"],"additionalProperties":False}},
+ {"type":"function","name":"create_project_zip","description":"Erstellt eine ZIP direkt aus dem ausdrücklich ausgewählten lokalen Projektordner. Anders als create_zip verwendet dieses Werkzeug NICHT den Chat-Arbeitsbereich. Erfordert aktivierten Projekt-Lese- und Schreibzugriff. Ausgabe und Quellen müssen innerhalb des ausgewählten Projektordners liegen. Nutze es, wenn der Nutzer eine ZIP des ausgewählten Projekts verlangt.","parameters":{"type":"object","properties":{"output":{"type":"string","description":"Zielpfad relativ zum ausgewählten Projektordner, z.B. release/Projekt.zip"},"paths":{"type":"array","items":{"type":"string"},"description":"Zu packende Dateien/Ordner relativ zum ausgewählten Projektordner; für das ganze Projekt den Pfad . verwenden"},"top_level_folder":{"type":"string","description":"Optionaler Ordnername im ZIP"}},"required":["output","paths"],"additionalProperties":False}},
  {"type":"function","name":"set_project_script_executable","description":"Setzt das Ausführungsrecht für ein freigegebenes Buildskript im aktuell ausgewählten Projektordner oder einem Unterordner. Erfordert Build-Ausführungsfreigabe.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"build_deb.sh, build_release.sh oder release.sh; auch relativ in Unterordnern, z.B. gluecksrad/build_release.sh"}},"required":["path"],"additionalProperties":False}},
  {"type":"function","name":"run_project_command","description":"Führt nach ausdrücklicher Nutzeranweisung oder eindeutiger Fortsetzung eines freigegebenen offenen Auftrags einen begrenzten Build- oder Prüf-Befehl direkt im aktuell ausgewählten Projektordner aus. Erfordert aktivierte Projekt-Lese-, Schreib- UND Build-Ausführungsfreigabe. Kein Shell-Parsing, keine Pipes, Umleitungen oder sudo. Unterstützt Python-Syntaxprüfung, dpkg-deb-Prüfung/-Build, ZIP-Prüfung und freigegebene Buildskripte build_deb.sh/build_release.sh/release.sh.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"Ein einzelner Befehl relativ zum Projektordner, z.B. ./build_release.sh, python3 -m py_compile main.py oder dpkg-deb --info release/app.deb"}},"required":["command"],"additionalProperties":False}},
  {"type":"function","name":"run_workspace_command","description":"Führt einen begrenzten Build- oder Testbefehl im Arbeitsbereich aus. Kein Shell-Parsing, keine Pipes, Umleitungen oder sudo. Ein vorhandenes build_deb.sh darf auch in einem Projekt-Unterordner ausgeführt werden; das Skript läuft dann in seinem eigenen Projektordner. Zulässig sind Python-Syntaxprüfung, dpkg-deb, zip/unzip-Prüfung und vorhandene Buildskripte.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"Ein einzelner Befehl, z.B. python3 -m py_compile Projekt/lunagpt/main.py, ./Projekt/build_deb.sh oder dpkg-deb --info Projekt/dist/lunagpt.deb"}},"required":["command"],"additionalProperties":False}}
@@ -970,6 +971,39 @@ class AgentTools:
             target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
             mode=stat.S_IMODE(target.stat().st_mode)
             return {"path":str(target.relative_to(self.root)),"mode":format(mode,"04o"),"executable":bool(mode & stat.S_IXUSR),"workspace":str(self.root)}
+        if name == "create_project_zip":
+            if not self.project_read_enabled or not self.project_write_enabled or self.project_root is None:
+                raise ValueError("Für eine Projekt-ZIP müssen Projekt-Lese- und Schreibzugriff aktiviert sein.")
+            rel_output=str(args.get("output", "")).strip()
+            if not rel_output or Path(rel_output).is_absolute() or ".." in Path(rel_output).parts:
+                raise ValueError("Der ZIP-Zielpfad muss relativ innerhalb des Projektordners liegen.")
+            output=(self.project_root/rel_output).resolve()
+            if self.project_root not in output.parents:
+                raise ValueError("ZIP-Ausgabe außerhalb des ausgewählten Projektordners ist nicht erlaubt.")
+            paths=args.get("paths") or []
+            if not paths: raise ValueError("Bitte mindestens eine Projektdatei oder einen Projektordner angeben.")
+            top=str(args.get("top_level_folder") or "").strip().strip("/")
+            output.parent.mkdir(parents=True,exist_ok=True)
+            count=0
+            with zipfile.ZipFile(output,"w",zipfile.ZIP_DEFLATED) as z:
+                for rel in paths:
+                    src=self._project_safe(rel)
+                    if not src.exists(): raise ValueError(f"Projektdatei/-ordner nicht gefunden: {rel}")
+                    candidates=[src] if src.is_file() else sorted(x for x in src.rglob("*") if x.is_file() and not x.is_symlink())
+                    for file in candidates:
+                        resolved=file.resolve()
+                        if self.project_root not in resolved.parents or resolved == output: continue
+                        if ".lunagpt-backups" in resolved.relative_to(self.project_root).parts: continue
+                        arc=Path(top)/file.relative_to(src.parent if src.is_file() else src) if top else (Path(rel)/file.relative_to(src) if src.is_dir() else Path(rel))
+                        info=zipfile.ZipInfo.from_file(file,arc.as_posix())
+                        info.compress_type=zipfile.ZIP_DEFLATED
+                        info.external_attr=(stat.S_IMODE(file.stat().st_mode)&0xFFFF)<<16
+                        with file.open("rb") as stream: z.writestr(info,stream.read())
+                        count+=1
+            with zipfile.ZipFile(output,"r") as check:
+                bad=check.testzip()
+                if bad: raise ValueError(f"ZIP-Prüfung fehlgeschlagen: {bad}")
+            return {"created":str(output),"project":str(self.project_root),"files_packed":count,"bytes":output.stat().st_size,"zip_test":"ok"}
         if name == "create_zip":
             output=self._safe(args.get("output")); paths=args.get("paths") or []
             if not paths: raise ValueError("Bitte mindestens eine Datei oder einen Ordner zum Packen angeben.")
@@ -1280,7 +1314,7 @@ def _agent_run(url, token, model, messages, use_web, attachments, chat_id=None, 
     for m in messages:
         if m.get("role")=="system": instructions=m.get("content","")
         else: conversation.append({"role":m["role"],"content":m["content"]})
-    instructions += "\n\nLOKALER PROJEKTZUGRIFF: " + ("Der Nutzer hat diesen Projektordner ausdrücklich ausgewählt: " + str(tools.project_root) + ". Lesen ist " + ("freigegeben" if tools.project_read_enabled else "NICHT freigegeben") + "; Änderungen sind " + ("freigegeben" if tools.project_write_enabled else "NICHT freigegeben") + "; Build-/Befehlsausführung ist " + ("freigegeben" if tools.project_exec_enabled else "NICHT freigegeben") + ". Führe Projekt-Builds ausschließlich im ausgewählten Projektordner mit run_project_command aus, und nur wenn die aktuelle Nutzernachricht oder der eindeutig fortgesetzte ursprüngliche Auftrag den Build ausdrücklich verlangt. Bei konkreten Projektfragen darfst du bei aktivierter Lesefreigabe list_project_files/read_project_file verwenden. Schreibe oder ändere Projektdateien nur, wenn die aktuelle Nutzernachricht oder die eindeutige Fortsetzung eines noch offenen konkreten Auftrags eine Änderung verlangt UND project_write_enabled aktiv ist. Vorhandene Dateien werden vor dem Überschreiben gesichert; nenne immer den absoluten Dateipfad und den Sicherungspfad. Für punktuelle Änderungen an vorhandenen Dateien, besonders großen Dateien, nutze bevorzugt patch_project_file statt die komplette Datei mit write_project_file zu ersetzen. Bei deaktivierter Freigabe bitte den Nutzer um Aktivierung, statt Zugriff zu versuchen." if tools.project_root else "Es ist kein lokaler Projektordner ausgewählt. Verwende für eigene Ausgaben ausschließlich den LunaGPT-Arbeitsbereich.") + "\n\nWICHTIG ZUM SPEICHERORT: Der aktuelle Arbeitsbereich lautet exakt: " + str(tools.root) + ". Nach JEDEM Erstellen, Kopieren, Entpacken oder Erzeugen eines ZIP/DEB musst du dem Nutzer den vollständigen absoluten Dateipfad nennen. Bei mehreren Dateien alle relevanten absoluten Pfade aufführen. Behaupte niemals, eine Datei sei automatisch im Download-Ordner.\n\nDu hast Werkzeuge für echte Dateiarbeit. Entscheide anhand der aktuellen Nutzeranweisung in natürlicher Sprache, ob Dateiarbeit ausdrücklich beauftragt wurde. Eine normale Nachricht, ein bloßer Klick auf Senden, ein Anhang allein oder ein früherer, bereits abgeschlossener Auftrag sind KEINE Erlaubnis. Eine eindeutige Fortsetzung eines noch offenen, ausdrücklich beauftragten Auftrags ist dagegen weiterhin freigegeben. Rufe Dateiwerkzeuge nur auf, wenn die aktuelle Nachricht oder die eindeutige Fortsetzung eines noch offenen ausdrücklich beauftragten Auftrags verlangt, Anhänge zu untersuchen, Dateien/Code zu erstellen oder zu ändern, ein Projekt vorzubereiten oder eine ZIP zu erzeugen. Verwende keine starren Schlüsselwortregeln; verstehe den Sinn des aktuellen Auftrags. Wenn ein neu erstelltes Shell-Skript wie build_deb.sh vor dem Packen ausführbar sein muss, verwende set_workspace_executable auf die konkrete .sh-Datei im Arbeitsbereich, bevor du create_zip oder prepare_github_release ausführst; ändere Rechte nur im Rahmen des ausdrücklich angeforderten Projektauftrags und prüfe danach die ZIP-Metadaten. Wenn kein solcher Auftrag vorliegt, antworte normal im Chat und erstelle nichts. Bei einem konkreten Projekt-/GitHub-Archivauftrag: Rufe zuerst list_attachments auf, extrahiere angehängte Quell-ZIPs mit extract_attachment_to_workspace und kopiere angehängte DEBs mit copy_attachment_to_workspace. Untersuche danach die vollständigen extrahierten Dateien und Paketdateien. Erstelle ein vollständiges Repository mit dem echten Quellcode und allen erforderlichen Dateien; schreibe NICHT nur README/CHANGELOG/Lizenz und behaupte dann, das Projekt sei fertig. Wenn Quellcode im ausgewählten Projektordner geändert wurde und der Nutzer ein lauffähiges Paket verlangt, nutze bei aktivierter separater Build-Freigabe run_project_command für Syntaxprüfungen und zum Ausführen eines freigegebenen Buildskripts direkt im Projektordner; baue DEBs nicht nur durch Kopieren eines alten Pakets. Ein nicht ausführbares Buildskript darfst du nur mit set_project_script_executable ausführbar machen, wenn die Build-Freigabe aktiv ist. Führe Arbeitsbereich-Befehle nur im Arbeitsbereich aus. Für den ausdrücklich ausgewählten lokalen Projektordner verwende run_project_command; dieses Werkzeug benötigt eine eigene Build-Ausführungsfreigabe und führt nur die begrenzten Prüf-/Build-Befehle im Projektordner aus. Melde fehlgeschlagene Tests ehrlich. Für ausdrücklich angeforderte Funktionsprüfungen darfst du `python3 Projekt/main.py` verwenden, sofern die .py-Datei im Arbeitsbereich liegt; `dpkg-deb --build --root-owner-group` ist ebenfalls für Build-Ordner innerhalb des Arbeitsbereichs erlaubt. Packe niemals den gesamten Chat-Arbeitsbereich als äußeres ZIP. Gib ausschließlich die beiden Dateien aus `release/` getrennt aus und nenne ihre exakten Pfade. Bei selbst erzeugten Debian-Buildskripten verwende `dpkg-deb --build --root-owner-group` (sofern vom installierten dpkg-deb unterstützt), damit Eigentümer und Gruppe im Paket reproduzierbar root:root sind; behandle Warnungen nicht als erfolgreich bereinigt, sondern prüfe den Build-Ausgang. Der dedizierte release/-Ordner muss nach erfolgreicher Release-Vorbereitung nur die aktuelle GitHub-ZIP und das frisch aus genau dieser ZIP gebaute DEB enthalten; gib diese zwei Dateien getrennt aus, nicht den kompletten Arbeitsordner. Erstelle eine ZIP mit dem kompletten Repository einschließlich Quellcode und bei explizitem Wunsch auch die originale oder neu gebaute DEB-Datei. Wenn der Nutzer ein GitHub-fertiges Projekt mit sauberer ZIP und neu gebautem DEB verlangt, nutze nach den notwendigen Codeänderungen bevorzugt prepare_github_release; gib niemals alte DEBs als neu gebaut aus und prüfe die zurückgegebenen success-/Versions-/Pfadangaben. Prüfe vor Abschluss mit list_workspace_files, dass Quellcode, README, CHANGELOG und gewünschte Pakete wirklich enthalten sind. Sage niemals, etwas erstellt zu haben, bevor das Werkzeug Erfolg gemeldet hat. Nenne am Ende die vollständigen Ausgabe-Pfade. GitHub-Upload/Push ist nicht verfügbar; erstelle stattdessen ein GitHub-fertiges lokales Projekt/ZIP, wenn das gemeint ist."
+    instructions += "\n\nLOKALER PROJEKTZUGRIFF: " + ("Der Nutzer hat diesen Projektordner ausdrücklich ausgewählt: " + str(tools.project_root) + ". Lesen ist " + ("freigegeben" if tools.project_read_enabled else "NICHT freigegeben") + "; Änderungen sind " + ("freigegeben" if tools.project_write_enabled else "NICHT freigegeben") + "; Build-/Befehlsausführung ist " + ("freigegeben" if tools.project_exec_enabled else "NICHT freigegeben") + ". Führe Projekt-Builds ausschließlich im ausgewählten Projektordner mit run_project_command aus, und nur wenn die aktuelle Nutzernachricht oder der eindeutig fortgesetzte ursprüngliche Auftrag den Build ausdrücklich verlangt. Bei konkreten Projektfragen darfst du bei aktivierter Lesefreigabe list_project_files/read_project_file verwenden. Schreibe oder ändere Projektdateien nur, wenn die aktuelle Nutzernachricht oder die eindeutige Fortsetzung eines noch offenen konkreten Auftrags eine Änderung verlangt UND project_write_enabled aktiv ist. Vorhandene Dateien werden vor dem Überschreiben gesichert; nenne immer den absoluten Dateipfad und den Sicherungspfad. Für punktuelle Änderungen an vorhandenen Dateien, besonders großen Dateien, nutze bevorzugt patch_project_file statt die komplette Datei mit write_project_file zu ersetzen. Bei deaktivierter Freigabe bitte den Nutzer um Aktivierung, statt Zugriff zu versuchen." if tools.project_root else "Es ist kein lokaler Projektordner ausgewählt. Verwende für eigene Ausgaben ausschließlich den LunaGPT-Arbeitsbereich.") + "\n\nZIP-REGEL: create_zip packt ausschließlich Inhalte des aktuellen Chat-Arbeitsbereichs. Wenn der Nutzer eine ZIP des links ausgewählten Projektordners verlangt, verwende create_project_zip mit relativen Pfaden innerhalb dieses Projektordners (für das ganze Projekt paths=[\".\"]). Dafür müssen Projekt-Lese- und Schreibfreigabe aktiv sein. Behaupte nicht, der ausgewählte Projektordner könne nicht gepackt werden, wenn create_project_zip verfügbar und freigegeben ist.\n\nWICHTIG ZUM SPEICHERORT: Der aktuelle Arbeitsbereich lautet exakt: " + str(tools.root) + ". Nach JEDEM Erstellen, Kopieren, Entpacken oder Erzeugen eines ZIP/DEB musst du dem Nutzer den vollständigen absoluten Dateipfad nennen. Bei mehreren Dateien alle relevanten absoluten Pfade aufführen. Behaupte niemals, eine Datei sei automatisch im Download-Ordner.\n\nDu hast Werkzeuge für echte Dateiarbeit. Entscheide anhand der aktuellen Nutzeranweisung in natürlicher Sprache, ob Dateiarbeit ausdrücklich beauftragt wurde. Eine normale Nachricht, ein bloßer Klick auf Senden, ein Anhang allein oder ein früherer, bereits abgeschlossener Auftrag sind KEINE Erlaubnis. Eine eindeutige Fortsetzung eines noch offenen, ausdrücklich beauftragten Auftrags ist dagegen weiterhin freigegeben. Rufe Dateiwerkzeuge nur auf, wenn die aktuelle Nachricht oder die eindeutige Fortsetzung eines noch offenen ausdrücklich beauftragten Auftrags verlangt, Anhänge zu untersuchen, Dateien/Code zu erstellen oder zu ändern, ein Projekt vorzubereiten oder eine ZIP zu erzeugen. Verwende keine starren Schlüsselwortregeln; verstehe den Sinn des aktuellen Auftrags. Wenn ein neu erstelltes Shell-Skript wie build_deb.sh vor dem Packen ausführbar sein muss, verwende set_workspace_executable auf die konkrete .sh-Datei im Arbeitsbereich, bevor du create_zip oder prepare_github_release ausführst; ändere Rechte nur im Rahmen des ausdrücklich angeforderten Projektauftrags und prüfe danach die ZIP-Metadaten. Wenn kein solcher Auftrag vorliegt, antworte normal im Chat und erstelle nichts. Bei einem konkreten Projekt-/GitHub-Archivauftrag: Rufe zuerst list_attachments auf, extrahiere angehängte Quell-ZIPs mit extract_attachment_to_workspace und kopiere angehängte DEBs mit copy_attachment_to_workspace. Untersuche danach die vollständigen extrahierten Dateien und Paketdateien. Erstelle ein vollständiges Repository mit dem echten Quellcode und allen erforderlichen Dateien; schreibe NICHT nur README/CHANGELOG/Lizenz und behaupte dann, das Projekt sei fertig. Wenn Quellcode im ausgewählten Projektordner geändert wurde und der Nutzer ein lauffähiges Paket verlangt, nutze bei aktivierter separater Build-Freigabe run_project_command für Syntaxprüfungen und zum Ausführen eines freigegebenen Buildskripts direkt im Projektordner; baue DEBs nicht nur durch Kopieren eines alten Pakets. Ein nicht ausführbares Buildskript darfst du nur mit set_project_script_executable ausführbar machen, wenn die Build-Freigabe aktiv ist. Führe Arbeitsbereich-Befehle nur im Arbeitsbereich aus. Für den ausdrücklich ausgewählten lokalen Projektordner verwende run_project_command; dieses Werkzeug benötigt eine eigene Build-Ausführungsfreigabe und führt nur die begrenzten Prüf-/Build-Befehle im Projektordner aus. Melde fehlgeschlagene Tests ehrlich. Für ausdrücklich angeforderte Funktionsprüfungen darfst du `python3 Projekt/main.py` verwenden, sofern die .py-Datei im Arbeitsbereich liegt; `dpkg-deb --build --root-owner-group` ist ebenfalls für Build-Ordner innerhalb des Arbeitsbereichs erlaubt. Packe niemals den gesamten Chat-Arbeitsbereich als äußeres ZIP. Gib ausschließlich die beiden Dateien aus `release/` getrennt aus und nenne ihre exakten Pfade. Bei selbst erzeugten Debian-Buildskripten verwende `dpkg-deb --build --root-owner-group` (sofern vom installierten dpkg-deb unterstützt), damit Eigentümer und Gruppe im Paket reproduzierbar root:root sind; behandle Warnungen nicht als erfolgreich bereinigt, sondern prüfe den Build-Ausgang. Der dedizierte release/-Ordner muss nach erfolgreicher Release-Vorbereitung nur die aktuelle GitHub-ZIP und das frisch aus genau dieser ZIP gebaute DEB enthalten; gib diese zwei Dateien getrennt aus, nicht den kompletten Arbeitsordner. Erstelle eine ZIP mit dem kompletten Repository einschließlich Quellcode und bei explizitem Wunsch auch die originale oder neu gebaute DEB-Datei. Wenn der Nutzer ein GitHub-fertiges Projekt mit sauberer ZIP und neu gebautem DEB verlangt, nutze nach den notwendigen Codeänderungen bevorzugt prepare_github_release; gib niemals alte DEBs als neu gebaut aus und prüfe die zurückgegebenen success-/Versions-/Pfadangaben. Prüfe vor Abschluss mit list_workspace_files, dass Quellcode, README, CHANGELOG und gewünschte Pakete wirklich enthalten sind. Sage niemals, etwas erstellt zu haben, bevor das Werkzeug Erfolg gemeldet hat. Nenne am Ende die vollständigen Ausgabe-Pfade. GitHub-Upload/Push ist nicht verfügbar; erstelle stattdessen ein GitHub-fertiges lokales Projekt/ZIP, wenn das gemeint ist."
     
 
     active_bilingual_task = _bilingualization_task_context(messages)
@@ -2828,8 +2862,37 @@ class MainWindow(QMainWindow):
         return Path(self.config.get("workspace_dir") or (Path.home() / "Documents" / "LunaGPT-Arbeitsbereich")).expanduser()
 
     def current_chat_workspace(self):
-        safe_id = re.sub(r"[^A-Za-z0-9_-]", "", str(self.current_chat or ""))[:80] or "Noch-kein-Chat"
+        if not self.current_chat:
+            return self.current_workspace_base()
+        safe_id = re.sub(r"[^A-Za-z0-9_-]", "", str(self.current_chat))[:80]
         return self.current_workspace_base() / ("Chat-" + safe_id)
+
+    def activate_chat_context(self, chat_id):
+        """Restore the project selection and last-active marker for this chat."""
+        previous_chat = self.config.get("last_active_chat_id")
+        project_map = self.config.setdefault("chat_project_dirs", {})
+        # Migrate the legacy single project selection to the previously active chat once.
+        if chat_id and chat_id not in project_map and chat_id == previous_chat and self.config.get("project_dir"):
+            project_map[chat_id] = self.config["project_dir"]
+        self.current_chat = chat_id
+        self.config["last_active_chat_id"] = chat_id or ""
+        if chat_id and chat_id in project_map:
+            self.config["project_dir"] = project_map[chat_id]
+        else:
+            self.config["project_dir"] = ""
+        # Permissions are deliberately reset on every chat switch.
+        self.config["project_read_enabled"] = False
+        self.config["project_write_enabled"] = False
+        self.config["project_exec_enabled"] = False
+        save_config(self.config)
+        for widget_name in ("projectreadcheck", "projectwritecheck", "projectexeccheck"):
+            widget = getattr(self, widget_name, None)
+            if widget is not None:
+                widget.blockSignals(True)
+                widget.setChecked(False)
+                widget.blockSignals(False)
+        self.update_workspace_display()
+        self.update_project_display()
 
     def update_workspace_display(self):
         self.workspacepath.setText(tr("Aktueller Chat:\n") + str(self.current_chat_workspace()))
@@ -2879,6 +2942,8 @@ class MainWindow(QMainWindow):
         selected=QFileDialog.getExistingDirectory(self,tr("Lokalen Projektordner auswählen"),str(current if current and current.is_dir() else Path.home()))
         if not selected: return
         self.config["project_dir"]=str(Path(selected).expanduser().resolve())
+        if self.current_chat:
+            self.config.setdefault("chat_project_dirs", {})[self.current_chat] = self.config["project_dir"]
         # A newly selected project starts with both AI permissions disabled.
         self.config["project_read_enabled"]=False
         self.config["project_write_enabled"]=False
@@ -3127,7 +3192,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self,tr("ChatGPT-Anmeldung fehlgeschlagen"),message)
     def refresh_chats(self, select_id=None):
         """Rebuild the visible chat list and synchronize selection/transcript immediately."""
-        previous_id = select_id if select_id is not None else self.current_chat
+        previous_id = select_id if select_id is not None else (self.current_chat or self.config.get("last_active_chat_id"))
         self.chats.blockSignals(True)
         try:
             self.chats.clear()
@@ -3151,10 +3216,19 @@ class MainWindow(QMainWindow):
 
         current_item = self.chats.currentItem()
         if current_item is not None:
-            self.current_chat = current_item.data(Qt.UserRole)
+            selected_id = current_item.data(Qt.UserRole)
+            if selected_id != self.current_chat:
+                self.activate_chat_context(selected_id)
+            else:
+                self.config["last_active_chat_id"] = selected_id
+                save_config(self.config)
+                self.update_workspace_display()
             self.load_chat()
         else:
             self.current_chat = None
+            self.config["last_active_chat_id"] = ""
+            save_config(self.config)
+            self.update_workspace_display()
             self.transcript.clear()
             self.title.setText(tr("LunaGPT"))
     def export_chats(self):
@@ -3328,12 +3402,11 @@ class MainWindow(QMainWindow):
 
     def select_chat(self,item,prev=None):
         if item:
-            self.current_chat=item.data(Qt.UserRole)
-            self.update_workspace_display()
+            self.activate_chat_context(item.data(Qt.UserRole))
             self.load_chat()
     def new_chat(self):
         cid=str(uuid.uuid4()); dball("INSERT INTO chats (id, title, created) VALUES(?,?,?)",(cid,"Neuer Chat",datetime.now().isoformat()),False)
-        self.current_chat=cid; self.update_workspace_display(); self.refresh_chats(cid); self.input.clear()
+        self.activate_chat_context(cid); self.refresh_chats(cid); self.input.clear()
     def load_chat(self):
         if not self.current_chat:return
         rows=dball("SELECT role,content,created FROM messages WHERE chat_id=? ORDER BY id",(self.current_chat,))
