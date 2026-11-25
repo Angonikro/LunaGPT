@@ -7,6 +7,21 @@ LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachei
 
 [Github Seite](https://github.com/Angonikro/LunaGPT/)
 
+## Funktionen 
+- Zweisprachiges Rechtsklick-Kontextmenü im Projektmanager-Editor (Deutsch/Englisch) mit Rückgängig, Wiederholen, Ausschneiden, Kopieren, Einfügen, Löschen und Alles auswählen.
+- Ausführliche integrierte Hilfe mit Schritt-für-Schritt-Anleitung für Chats, Arbeitsbereich, Projektstart und Paketierung
+- Projektpaketierung direkt im ausgewählten Projektordner: vorhandenes build_release.sh ohne sudo ausführen und ZIP/DEB anschließend prüfen
+- Interne Projektsicherungen auflisten, lesen, vergleichen und nach Bestätigung wiederherstellen
+- Lokaler Projekt-Arbeitsmodus mit Analyse, gezielter Mehrdatei-Bearbeitung, Sicherungen und Syntaxprüfung
+- Anmeldung über „Mit ChatGPT anmelden“ im Browser
+- Lokale Chat-Historie und Datei-Anhänge
+- Auf ausdrückliche Bitte lokale Suche im vollständigen Verlauf des geöffneten Chats; normale Anfragen bleiben unverändert
+- Sprachein- und -ausgabe; die Mikrofonaufnahme und Spracherkennung laufen in einem Hintergrundthread
+- KI-Dateiwerkzeuge im lokalen Arbeitsbereich `~/Documents/LunaGPT-Arbeitsbereich/`
+- Integrierter Projektmanager mit Dateibaum und Editor
+- Optionaler KI-Lesezugriff und separat freischaltbarer Schreibzugriff auf ausgewählte Projektordner
+- Automatische Sicherung vorhandener Dateien vor Änderungen
+- Online-Bildgenerierung über AI Horde
 
 ## Menüleiste
 
@@ -43,23 +58,6 @@ Tastenkürzel: `Strg+N` neuer Chat, `Strg+F` globale Suche, `Strg+T` Design wech
 ## Sprache der Benutzeroberfläche
 
 LunaGPT unterstützt Deutsch und Englisch. Öffne **Einstellungen**, wähle unter **Sprache der Benutzeroberfläche** Deutsch oder English und speichere die Auswahl. Das Fenster wird anschließend in der gewählten Sprache neu aufgebaut. Chat, aktuelle Eingabe und angehängte Dateien bleiben beim Sprachwechsel erhalten. Die Spracheinstellung wird lokal gespeichert und beim nächsten Start wiederverwendet.
-
-## Funktionen\n\n- Zweisprachiges Rechtsklick-Kontextmenü im Projektmanager-Editor (Deutsch/Englisch) mit Rückgängig, Wiederholen, Ausschneiden, Kopieren, Einfügen, Löschen und Alles auswählen.
-
-- Ausführliche integrierte Hilfe mit Schritt-für-Schritt-Anleitung für Chats, Arbeitsbereich, Projektstart und Paketierung
-- Projektpaketierung direkt im ausgewählten Projektordner: vorhandenes build_release.sh ohne sudo ausführen und ZIP/DEB anschließend prüfen
-
-- Interne Projektsicherungen auflisten, lesen, vergleichen und nach Bestätigung wiederherstellen
-- Lokaler Projekt-Arbeitsmodus mit Analyse, gezielter Mehrdatei-Bearbeitung, Sicherungen und Syntaxprüfung
-- Anmeldung über „Mit ChatGPT anmelden“ im Browser
-- Lokale Chat-Historie und Datei-Anhänge
-- Auf ausdrückliche Bitte lokale Suche im vollständigen Verlauf des geöffneten Chats; normale Anfragen bleiben unverändert
-- Sprachein- und -ausgabe; die Mikrofonaufnahme und Spracherkennung laufen in einem Hintergrundthread
-- KI-Dateiwerkzeuge im lokalen Arbeitsbereich `~/Documents/LunaGPT-Arbeitsbereich/`
-- Integrierter Projektmanager mit Dateibaum und Editor
-- Optionaler KI-Lesezugriff und separat freischaltbarer Schreibzugriff auf ausgewählte Projektordner
-- Automatische Sicherung vorhandener Dateien vor Änderungen
-- Online-Bildgenerierung über AI Horde
 
 ## Punktuelle Dateiänderungen (1.11.7)
 
