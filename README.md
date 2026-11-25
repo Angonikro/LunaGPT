@@ -1,9 +1,9 @@
-# LunaGPT 1.13.0
+# LunaGPT 1.13.1
 
 Zweisprachiger Desktop-Chatclient (Deutsch/Englisch) für Linux und Raspberry Pi. Die Sprache der Benutzeroberfläche lässt sich in den Einstellungen wählen und wird dauerhaft gespeichert. 
 LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
 
-![LunaGPT](lunagpt2.png)
+![LunaGPT](lunagpt1.png)
 
 [Github Seite](https://github.com/Angonikro/LunaGPT/)
 
@@ -92,7 +92,7 @@ Benötigt wird Debian 13 / Raspberry Pi OS mit ARM64 oder eine kompatible Debian
 
 ```bash
 sudo apt update
-sudo apt install ./lunagpt_1.13.0_all.deb
+sudo apt install ./lunagpt_1.13.1_all.deb
 # Benötigte MBROLA-Sprachausgabe:
 sudo apt install mbrola mbrola-de4 mbrola-en1
 ```
@@ -179,8 +179,8 @@ Benötigt werden `dpkg-deb`, `zip` und `unzip` (auf Debian liefert das Paket `dp
 
 ```bash
 python3 -m py_compile lunagpt/main.py lunagpt/siwc.py lunagpt/version.py
-dpkg-deb -I dist/lunagpt_1.13.0_all.deb
-dpkg-deb -c dist/lunagpt_1.13.0_all.deb
+dpkg-deb -I dist/lunagpt_1.13.1_all.deb
+dpkg-deb -c dist/lunagpt_1.13.1_all.deb
 ```
 
 ## Projektstruktur

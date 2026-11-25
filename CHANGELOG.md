@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 1.13.1
+- Gesprächsgedächtnis: wichtige Projektanforderungen und Projektstände werden bereits während der laufenden Unterhaltung chatlokal festgehalten.
+- Globaler Transfer: passende ältere Chat-Erinnerungen werden nach erfolgreicher globaler Speicherung auch ohne VORLÄUFIG/OFFEN-Kennzeichnung bereinigt.
+- Bestehende Trennung zwischen Chat-Gedächtnis und globalem Gedächtnis bleibt erhalten.
+
 ## 1.13.0 - Globale Suche - Gedächnis neu strukturiert- Projektmanager verbessert
 
 - Globale Suche über aktive und archivierte Chats mit Sprung zur Fundstelle.
@@ -156,7 +161,11 @@
 - Versionsnummer auf 1.11.3 erhöht.
 - Build-Ausführungsfreigabe und lokale Projekt-Buildfunktion aus 1.11.2 beibehalten.
 
+### Korrektur zu 1.11.2 – Paketierungsfunktion
 
+- Regression behoben: Die zusätzliche build_release.sh-Pflicht und das dafür eingeführte build_project_release-Werkzeug wurden entfernt.
+- Der bisherige Projekt-/Release-Arbeitsablauf aus 1.11.1 bleibt erhalten; vorhandene Werkzeuge zum Erstellen, Schreiben, Prüfen und Packen von Projektdateien stehen wieder wie zuvor zur Verfügung.
+- Versionsnummer bleibt unverändert bei 1.11.2.
 
 - Lokale Build-Ausführung für den ausdrücklich ausgewählten Projektordner ergänzt.
 - Neue separate Freigabe „KI darf Build-Befehle ausführen“; sie setzt aktivierte Lese- und Schreibfreigabe voraus und wird beim Wechsel des Projektordners zurückgesetzt.
@@ -318,52 +327,3 @@
 - ZIP- und DEB-Archive werden mit Pfad-, Mengen- und Größenprüfungen extrahiert.
 - Datenbank-Fix und Streaming-Responses-API bleiben erhalten.
 
-
-### Korrektur zu 1.11.2 – Paketierungsfunktion
-
-- Regression behoben: Die zusätzliche build_release.sh-Pflicht und das dafür eingeführte build_project_release-Werkzeug wurden entfernt.
-- Der bisherige Projekt-/Release-Arbeitsablauf aus 1.11.1 bleibt erhalten; vorhandene Werkzeuge zum Erstellen, Schreiben, Prüfen und Packen von Projektdateien stehen wieder wie zuvor zur Verfügung.
-- Versionsnummer bleibt unverändert bei 1.11.2.
-
-
-## Version 1.13.0 – Menüleisten-Überarbeitung
-
-- Menüleiste in Datei, Bearbeiten, Ansicht, Projekte, Werkzeuge, Einstellungen und Hilfe gegliedert.
-- Einstellungen als eigenständiges Menü; Theme-Wechsel bleibt unter Ansicht.
-- Globales Gedächtnis und Bildgenerierung unter Werkzeuge zusammengefasst.
-- Keine vorhandenen Seitenleisten-Funktionen entfernt; vorhandene Schnellzugriffe bleiben erhalten.
-- Tastenkürzel für zentrale Funktionen ergänzt.
-- Menütexte für Deutsch und Englisch ergänzt.
-- README um die korrigierte Menüstruktur und Bedienung ergänzt.
-- Versionsnummer bleibt auf ausdrücklichen Wunsch bei 1.13.0.
-
-### 1.13.0 – Gedächtnis-Zugriff in der Seitenleiste
-- Das globale, chatübergreifende Gedächtnis ist jetzt als eigener Eintrag „Globales Gedächtnis“ direkt neben dem Gesprächsgedächtnis erreichbar.
-- Die bisherige, weiter unten platzierte Schaltfläche „globales Gedächtnis“ wurde entfernt, damit es keine doppelte Navigation gibt.
-- Das Verwaltungsfenster erklärt ausdrücklich, dass globale Erinnerungen beim Löschen des ursprünglichen Chats erhalten bleiben.
-- Der Werkzeuge-Menüeintrag wurde ebenfalls in „Globales Gedächtnis“ umbenannt.
-
-### 1.13.0 – Globales Gedächtnis: Datum, Uhrzeit und eigene Sicherung
-- Einträge im Globalen Gedächtnis zeigen jetzt Datum und Uhrzeit statt fortlaufender Datenbanknummern.
-- Eigene JSON-Sicherung nur für das Globale Gedächtnis ergänzt.
-- Wiederherstellung fügt fehlende Einträge hinzu, lässt vorhandene Einträge bestehen und überspringt Duplikate.
-- Die bisherige gemeinsame Chat-/Gedächtnis-Exportfunktion bleibt zusätzlich erhalten.
-- Versionsnummer bleibt unverändert bei 1.13.0.
-
-### 1.13.0 – Vorläufige Erinnerungen bei endgültiger Entscheidung erledigen
-- Beim Speichern einer endgültigen globalen Entscheidung prüft LunaGPT das Gesprächsgedächtnis des aktuellen Chats.
-- Passende, ausdrücklich als vorläufig/offen markierte Erinnerungen werden anhand mehrerer gemeinsamer Themenbegriffe erkannt und aus dem aktiven Gesprächsgedächtnis entfernt.
-- Unabhängige und nicht vorläufige Chat-Erinnerungen bleiben erhalten.
-- Bereits vorhandene globale Duplikate verhindern keine Bereinigung einer passenden vorläufigen Chat-Erinnerung.
-- Versionsnummer bleibt 1.13.0.
-
-### Korrektur – Dateidialoge (Version 1.13.0)
-- Schaltflächen in den Qt-Dateidialogen werden nach internen Aktualisierungen erneut in der gewählten App-Sprache gesetzt.
-- Öffnen/Abbrechen und Speichern/Abbrechen bleiben auch nach Auswahl- und Verzeichnisänderungen lokalisiert.
-
-## 1.13.0 – Korrektur der Dateidialog-Übersetzung
-
-- Alle eigenen Qt-Datei- und Ordnerdialoge verwenden nun lokalisierte Feldbeschriftungen: „Suchen in“, „Dateiname“, „Dateityp“, „Verzeichnis“ und „Verzeichnisse“.
-- Aktionsschaltflächen wie „Öffnen“, „Speichern“, „Auswählen“ und „Abbrechen“ werden nach dem Anzeigen sowie nach Auswahl- und Verzeichnisänderungen erneut gesetzt.
-- Gilt für Speicherortauswahl, Projektordner, Chat-Import/-Export, Gedächtnissicherungen, Bildspeicherung und Dateianhänge.
-- Englische Beschriftungen werden weiterhin über die App-Sprache gesetzt.
