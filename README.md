@@ -3,7 +3,7 @@
 Zweisprachiger Desktop-Chatclient (Deutsch/Englisch) für Linux und Raspberry Pi. Die Sprache der Benutzeroberfläche lässt sich in den Einstellungen wählen und wird dauerhaft gespeichert. 
 LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
 
-![LunaGPT](lunagpt1.png)
+![LunaGPT](lunagpt2.png)
 
 [Github Seite](https://github.com/Angonikro/LunaGPT/)
 
