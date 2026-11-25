@@ -1,2 +1,2 @@
 """Zentrale Versionsdefinition für LunaGPT."""
-APP_VERSION = "1.12.9"
+APP_VERSION = "1.13.0"

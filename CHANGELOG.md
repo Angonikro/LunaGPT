@@ -1,4 +1,50 @@
-# Änderungsprotokoll
+# CHANGELOG
+
+## 1.13.0 - Globale Suche - Gedächnis neu strukturiert- Projektmanager verbessert
+
+- Globale Suche über aktive und archivierte Chats mit Sprung zur Fundstelle.
+- Chatbezogenes, manuell verwaltbares Langzeitgedächtnis mit Hinzufügen, Bearbeiten und Löschen.
+- Projektmanager: Unified-Diff zwischen gespeichertem Dateiinhalt und ungespeichertem Editorstand.
+- Die Schaltflächen „Chats exportieren“ und „Chats importieren“ aus der linken Seitenleiste entfernt.
+- Import und Export bleiben vollständig über **Datei → Chats importieren / Chats exportieren** erreichbar.
+- Hilfe und README an die Menüführung angepasst.
+- Das globale Gedächtnis wird bei jeder Anfrage vollständig lokal durchsucht, statt ausschließlich die 30 zuletzt gespeicherten Einträge zu verwenden.
+- LunaGPT wählt höchstens 30 thematisch passende Einträge anhand von Begriffen aus Anfrage und Projektkontext aus.
+- Gibt es weniger als 30 passende Einträge, werden nur diese verwendet; ohne passende Treffer wird kein Gedächtniskontext angefügt.
+- Die Auswahl erfolgt lokal in Python/SQLite, ohne zusätzliche KI-Anfrage.
+# Automatisches Gesprächsgedächtnis
+- Gesprächsgedächtnis speichert wichtige Entscheidungen, Projektstände, technische Lösungen und dauerhafte Vorlieben automatisch und separat pro Chat.
+- Ähnliche Erinnerungen werden aktualisiert, statt doppelt angelegt zu werden.
+- Beim Senden werden passende Erinnerungen aus dem aktuellen Chat lokal ausgewählt und als Kontext ergänzt.
+- Erinnerungen bleiben über Neustarts hinweg in SQLite erhalten und können im Verwaltungsfenster angesehen, bearbeitet oder gelöscht werden.
+- Zugangsdaten, Passwörter, API-Schlüssel und sensible persönliche/medizinische Angaben sind von der Speicherung ausgeschlossen.
+- Die bestehende manuelle Verwaltung bleibt verfügbar.
+# Gemeinsames Langzeitgedächtnis und Chat-Gedächtnis
+- Globales Gedächtnis bleibt chatübergreifend erhalten und wird automatisch nach langfristig wichtigen Projektentscheidungen, Lösungen und stabilen Arbeitsweisen durchsucht.
+- Das separate Chat-Gedächtnis speichert automatisch wichtige Informationen des aktuellen Gesprächs und ruft passende Erinnerungen bei späteren Nachrichten wieder ab.
+- Beim endgültigen Löschen eines Chats werden dessen Nachrichten und Chat-Erinnerungen gemeinsam gelöscht.
+- Globale Gedächtniseinträge bleiben beim Löschen eines Chats ausdrücklich erhalten.
+- Globale Einträge speichern zusätzlich den ursprünglichen Chat-Titel bzw. Projektbezug als Herkunftshinweis; dieser Hinweis bleibt auch nach dem Löschen des Chats bestehen.
+- Das globale Gedächtnis zeigt den Herkunftshinweis an. Bestehende Datenbanken werden automatisch und ohne Verlust migriert.
+- Beide Gedächtnisebenen bleiben getrennt verwaltbar.
+# Verbindliche und vorläufige Erinnerungen klar trennen
+- Globales Gedächtnis speichert nur noch ausdrücklich bestätigte/endgültige Projektentscheidungen, nachweislich funktionierende technische Lösungen und stabile dauerhafte Präferenzen.
+- Vorläufige Ideen, Vorschläge, Experimente und offene Entscheidungen sind ausdrücklich von der globalen Speicherung ausgeschlossen.
+- Für den weiteren Gesprächsverlauf relevante offene Überlegungen können im Gesprächsgedächtnis mit „VORLÄUFIG/OFFEN“ gekennzeichnet werden.
+- Erst nach ausdrücklicher Bestätigung wird eine vorläufige Idee als endgültige globale Projektentscheidung übernommen.
+# Korrektur Chat-Ansicht
+- Separater Seitenleisten-Button „Neue Chats anzeigen“ ergänzt.
+- Aktive Chats lassen sich nach dem Anzeigen archivierter Chats sofort wieder einblenden, ohne LunaGPT neu zu starten.
+- Beide Chatlisten-Schaltflächen sind in Deutsch und Englisch übersetzt.
+# Tool-Menü vollständig übersetzt
+- Der Menüeintrag „Bild erzeugen“ wird bei englischer App-Sprache als „Generate image“ angezeigt.
+- Die deutsche Beschriftung bleibt bei deutscher App-Sprache unverändert.
+# Sprach- und Dialogkorrekturen
+- Deutsch/Englisch-Übersetzungen für zusätzliche Gedächtnis-, Such-, Sicherungs- und Dialogtexte ergänzt.
+- Ja/Nein-, Speichern/Öffnen- und Abbrechen-Schaltflächen folgen der eingestellten App-Sprache.
+- Datei- und Ordnerauswahl verwenden nicht-native Qt-Dialoge mit lokalisierten Aktionsschaltflächen.
+- Die temporäre Suchdiagnose und ihre Protokollierung bleiben vollständig entfernt.
+- Abhängigkeiten zum erstellen von Projekt Datein hinzugefügt.
 
 ## 1.12.9
 
@@ -6,9 +52,9 @@
 - Projektordner-Auswahl wird chatbezogen gespeichert, sodass Chats getrennt an unterschiedlichen Projekten arbeiten können. Beim Chatwechsel werden Projektfreigaben aus Sicherheitsgründen zurückgesetzt.
 - Neue Funktion `create_project_zip`: ZIP-Dateien können direkt aus dem ausgewählten Projektordner erstellt und anschließend geprüft werden; Chat-Arbeitsbereich und Projektordner bleiben getrennt.
 
-## 1.12.8 – Erweiterung Wissenssammlung
+## 1.12.8 – Erweiterung des globalen Gedächtnisses
 
-- Automatischer Wissensaufbau ergänzt: LunaGPT kann wichtige, langfristig nützliche Projektentscheidungen, technische Lösungen und Arbeitspräferenzen selbstständig in der lokalen Wissenssammlung speichern.
+- Automatischer Aufbau des globalen Gedächtnisses ergänzt: LunaGPT kann wichtige, langfristig nützliche Projektentscheidungen, technische Lösungen und Arbeitspräferenzen selbstständig im lokalen Gedächtnis von LunaGPT speichern.
 - Automatische Speicherung ist standardmäßig aktiviert und kann in den Einstellungen jederzeit ausgeschaltet werden.
 - Duplikate werden vor dem Speichern erkannt; flüchtige Unterhaltung, Zugangsdaten und sensible persönliche Angaben sollen nicht gespeichert werden.
 - Gespeicherte Einträge werden bei späteren Anfragen als zusätzlicher Kontext berücksichtigt.
@@ -278,3 +324,46 @@
 - Regression behoben: Die zusätzliche build_release.sh-Pflicht und das dafür eingeführte build_project_release-Werkzeug wurden entfernt.
 - Der bisherige Projekt-/Release-Arbeitsablauf aus 1.11.1 bleibt erhalten; vorhandene Werkzeuge zum Erstellen, Schreiben, Prüfen und Packen von Projektdateien stehen wieder wie zuvor zur Verfügung.
 - Versionsnummer bleibt unverändert bei 1.11.2.
+
+
+## Version 1.13.0 – Menüleisten-Überarbeitung
+
+- Menüleiste in Datei, Bearbeiten, Ansicht, Projekte, Werkzeuge, Einstellungen und Hilfe gegliedert.
+- Einstellungen als eigenständiges Menü; Theme-Wechsel bleibt unter Ansicht.
+- Globales Gedächtnis und Bildgenerierung unter Werkzeuge zusammengefasst.
+- Keine vorhandenen Seitenleisten-Funktionen entfernt; vorhandene Schnellzugriffe bleiben erhalten.
+- Tastenkürzel für zentrale Funktionen ergänzt.
+- Menütexte für Deutsch und Englisch ergänzt.
+- README um die korrigierte Menüstruktur und Bedienung ergänzt.
+- Versionsnummer bleibt auf ausdrücklichen Wunsch bei 1.13.0.
+
+### 1.13.0 – Gedächtnis-Zugriff in der Seitenleiste
+- Das globale, chatübergreifende Gedächtnis ist jetzt als eigener Eintrag „Globales Gedächtnis“ direkt neben dem Gesprächsgedächtnis erreichbar.
+- Die bisherige, weiter unten platzierte Schaltfläche „globales Gedächtnis“ wurde entfernt, damit es keine doppelte Navigation gibt.
+- Das Verwaltungsfenster erklärt ausdrücklich, dass globale Erinnerungen beim Löschen des ursprünglichen Chats erhalten bleiben.
+- Der Werkzeuge-Menüeintrag wurde ebenfalls in „Globales Gedächtnis“ umbenannt.
+
+### 1.13.0 – Globales Gedächtnis: Datum, Uhrzeit und eigene Sicherung
+- Einträge im Globalen Gedächtnis zeigen jetzt Datum und Uhrzeit statt fortlaufender Datenbanknummern.
+- Eigene JSON-Sicherung nur für das Globale Gedächtnis ergänzt.
+- Wiederherstellung fügt fehlende Einträge hinzu, lässt vorhandene Einträge bestehen und überspringt Duplikate.
+- Die bisherige gemeinsame Chat-/Gedächtnis-Exportfunktion bleibt zusätzlich erhalten.
+- Versionsnummer bleibt unverändert bei 1.13.0.
+
+### 1.13.0 – Vorläufige Erinnerungen bei endgültiger Entscheidung erledigen
+- Beim Speichern einer endgültigen globalen Entscheidung prüft LunaGPT das Gesprächsgedächtnis des aktuellen Chats.
+- Passende, ausdrücklich als vorläufig/offen markierte Erinnerungen werden anhand mehrerer gemeinsamer Themenbegriffe erkannt und aus dem aktiven Gesprächsgedächtnis entfernt.
+- Unabhängige und nicht vorläufige Chat-Erinnerungen bleiben erhalten.
+- Bereits vorhandene globale Duplikate verhindern keine Bereinigung einer passenden vorläufigen Chat-Erinnerung.
+- Versionsnummer bleibt 1.13.0.
+
+### Korrektur – Dateidialoge (Version 1.13.0)
+- Schaltflächen in den Qt-Dateidialogen werden nach internen Aktualisierungen erneut in der gewählten App-Sprache gesetzt.
+- Öffnen/Abbrechen und Speichern/Abbrechen bleiben auch nach Auswahl- und Verzeichnisänderungen lokalisiert.
+
+## 1.13.0 – Korrektur der Dateidialog-Übersetzung
+
+- Alle eigenen Qt-Datei- und Ordnerdialoge verwenden nun lokalisierte Feldbeschriftungen: „Suchen in“, „Dateiname“, „Dateityp“, „Verzeichnis“ und „Verzeichnisse“.
+- Aktionsschaltflächen wie „Öffnen“, „Speichern“, „Auswählen“ und „Abbrechen“ werden nach dem Anzeigen sowie nach Auswahl- und Verzeichnisänderungen erneut gesetzt.
+- Gilt für Speicherortauswahl, Projektordner, Chat-Import/-Export, Gedächtnissicherungen, Bildspeicherung und Dateianhänge.
+- Englische Beschriftungen werden weiterhin über die App-Sprache gesetzt.

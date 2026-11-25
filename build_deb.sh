@@ -1,5 +1,5 @@
 #!/bin/sh
-# LunaGPT release line 1.12.9; actual package version comes from lunagpt/version.py.
+# LunaGPT release line 1.13.0; actual package version comes from lunagpt/version.py.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 OUT="$ROOT/dist"

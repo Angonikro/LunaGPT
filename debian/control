@@ -1,9 +1,9 @@
 Package: lunagpt
-Version: 1.12.9
+Version: 1.13.0
 Section: utils
 Priority: optional
 Architecture: all
-Depends: python3, python3-pyside6.qtwidgets, python3-pyside6.qtgui, python3-pyside6.qtcore, python3-cryptography, python3-pyaudio, poppler-utils, alsa-utils, espeak-ng, mbrola, mbrola-de4, mbrola-en1
+Depends: python3, python3-pyside6.qtwidgets, python3-pyside6.qtgui, python3-pyside6.qtcore, python3-cryptography, python3-pyaudio, poppler-utils, alsa-utils, espeak-ng, mbrola, mbrola-de4, mbrola-en1, dpkg, zip, unzip
 Maintainer: LunaGPT Project
 Description: ChatGPT desktop client with AI-driven file tools and complete project packaging
  LunaGPT is a local desktop assistant with ChatGPT sign-in for eligible plan

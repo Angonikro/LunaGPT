@@ -1,1 +1,3 @@
-# Kernabhängigkeiten; Debian-Systempakete werden bevorzugt über apt installiert.\nPySide6>=6.6\ncryptography>=41\n
+# Kernabhängigkeiten; Debian-Systempakete werden bevorzugt über apt installiert.
+PySide6>=6.6
+cryptography>=41

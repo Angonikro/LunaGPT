@@ -1,10 +1,35 @@
-# LunaGPT 1.12.9
+# LunaGPT 1.13.0
 
-Zweisprachiger Desktop-Chatclient (Deutsch/Englisch) für Linux und Raspberry Pi. Die Sprache der Benutzeroberfläche lässt sich in den Einstellungen wählen und wird dauerhaft gespeichert. LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
+Zweisprachiger Desktop-Chatclient (Deutsch/Englisch) für Linux und Raspberry Pi. Die Sprache der Benutzeroberfläche lässt sich in den Einstellungen wählen und wird dauerhaft gespeichert. 
+LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
 
 ![LunaGPT](lunagpt1.png)
 
 [Github Seite](https://github.com/Angonikro/LunaGPT/)
+
+
+## Menüleiste
+
+Die obere Menüleiste bündelt die wichtigsten Funktionen:
+
+- **Datei:** neuen Chat starten, Chats über **Datei → Chats importieren/exportieren** verwalten, Arbeitsbereich öffnen, Speicherort ändern und LunaGPT beenden.
+- **Bearbeiten:** Rückgängig, Wiederholen, Ausschneiden, Kopieren, Einfügen und Alles auswählen für das aktuell fokussierte Eingabefeld bzw. den Editor.
+- **Ansicht:** helles/dunkles Design wechseln sowie archivierte Chats, globale Suche und Gesprächsgedächtnis öffnen.
+- **Projekte:** Projektordner auswählen, Projektmanager und Sicherungen verwalten.
+- **Werkzeuge:** Globales Gedächtnis und Bildgenerierung öffnen.
+- **Einstellungen:** eigener Menüpunkt für Programm-, Sprach-, Modell- und Audioeinstellungen.
+- **Hilfe:** Anleitung und Informationen über LunaGPT.
+
+Tastenkürzel: `Strg+N` neuer Chat, `Strg+F` globale Suche, `Strg+T` Design wechseln, `Strg+,` Einstellungen, `F1` Hilfe und `Strg+Q` Beenden.
+
+## Globales Gedächtnis und Gesprächsgedächtnis
+
+- **Globale Chat-Suche:** Durchsucht Nachrichten aller Chats einschließlich Archiv; Treffer zeigen Chat, Zeit und Textausschnitt. Ein Treffer öffnet den zugehörigen Chat und springt zur Fundstelle.
+- **Zwei getrennte Gedächtnisebenen:** Das **globales Gedächtnis** speichert wichtige Projektentscheidungen, technische Lösungen und dauerhafte Arbeitsweisen chatübergreifend. 
+- Zusätzlich besitzt jeder Chat ein eigenes **Gesprächsgedächtnis** für den aktuellen Gesprächskontext. Beide Ebenen speichern und rufen passende Informationen automatisch ab. 
+- Beim Löschen eines Chats werden dessen Nachrichten und Chat-Erinnerungen gelöscht; globale Einträge bleiben erhalten. Globale Einträge zeigen ihren ursprünglichen Chat- oder Projektbezug als Herkunftshinweis. 
+- Beide Gedächtnisse lassen sich getrennt verwalten. Zugangsdaten und sensible persönliche/medizinische Angaben werden ausgeschlossen.
+- **Projektänderungen vergleichen:** Der Projektmanager kann den aktuellen Editorinhalt mit der gespeicherten Datei vergleichen und zeigt einen Unified-Diff, bevor Änderungen gespeichert werden.
 
 ## Projektmanager-Editor
 
@@ -38,21 +63,27 @@ LunaGPT unterstützt Deutsch und Englisch. Öffne **Einstellungen**, wähle unte
 
 ## Punktuelle Dateiänderungen (1.11.7)
 
-Für kleine Änderungen an vorhandenen Projektdateien verwendet LunaGPT bevorzugt `patch_project_file`. Dabei wird ein exakt angegebener Textabschnitt ersetzt, statt eine große Datei vollständig neu zu schreiben. Der Patch wird nur angewendet, wenn der alte Abschnitt genau so oft vorkommt wie erwartet (standardmäßig genau einmal). Bei fehlenden oder mehrdeutigen Treffern bleibt die Originaldatei unverändert.
+Für kleine Änderungen an vorhandenen Projektdateien verwendet LunaGPT bevorzugt `patch_project_file`. Dabei wird ein exakt angegebener Textabschnitt ersetzt, statt eine große Datei vollständig neu zu schreiben. 
+Der Patch wird nur angewendet, wenn der alte Abschnitt genau so oft vorkommt wie erwartet (standardmäßig genau einmal). Bei fehlenden oder mehrdeutigen Treffern bleibt die Originaldatei unverändert.
 
-Vor dem Schreiben wird eine Sicherung unter `.lunagpt-backups/` erstellt und bytegenau verifiziert. Python-Dateien werden vor dem Speichern mit dem AST-Parser auf Syntaxfehler geprüft. Anschließend kontrolliert LunaGPT den gespeicherten Inhalt und erhält die Dateiberechtigungen. Die Funktion benötigt weiterhin die ausdrücklich aktivierte Projekt-Schreibfreigabe. Für neue Dateien oder ausdrücklich vollständige Ersetzungen bleibt `write_project_file` verfügbar.
+Vor dem Schreiben wird eine Sicherung unter `.lunagpt-backups/` erstellt und bytegenau verifiziert. Python-Dateien werden vor dem Speichern mit dem AST-Parser auf Syntaxfehler geprüft. 
+Anschließend kontrolliert LunaGPT den gespeicherten Inhalt und erhält die Dateiberechtigungen. Die Funktion benötigt weiterhin die ausdrücklich aktivierte Projekt-Schreibfreigabe. Für neue Dateien oder ausdrücklich vollständige Ersetzungen bleibt `write_project_file` verfügbar.
 
 ## Datenschutz und Dateiarbeit
 
-Chat-Verlauf und Einstellungen werden lokal verwaltet. Normale Dateiwerkzeuge arbeiten im eingestellten LunaGPT-Arbeitsbereich. Ein Projektordner wird im Projektmanager ausdrücklich ausgewählt. Lese- und Schreibzugriff müssen separat freigegeben werden. Vorhandene Projektdateien werden vor dem Überschreiben unter `.lunagpt-backups/` gesichert. Pfade außerhalb des ausgewählten Projektordners werden abgewiesen.
+Chat-Verlauf und Einstellungen werden lokal verwaltet. Normale Dateiwerkzeuge arbeiten im eingestellten LunaGPT-Arbeitsbereich. Ein Projektordner wird im Projektmanager ausdrücklich ausgewählt. 
+Lese- und Schreibzugriff müssen separat freigegeben werden. Vorhandene Projektdateien werden vor dem Überschreiben unter `.lunagpt-backups/` gesichert. Pfade außerhalb des ausgewählten Projektordners werden abgewiesen.
 
 ## Build-Befehle im ausgewählten Projektordner
 
-LunaGPT kann auf ausdrücklichen Auftrag Build- und Prüfskripte direkt im aktuell ausgewählten Projektordner ausführen. Dafür müssen Lese-, Schreib- und die separate Build-Ausführungsfreigabe aktiviert sein. Die Build-Freigabe ist standardmäßig ausgeschaltet und wird beim Wechsel des Projektordners zurückgesetzt. Unterstützt werden `build_deb.sh`, `build_release.sh` und `release.sh` im Projektstamm sowie begrenzte Prüfungen mit Python `py_compile`, `dpkg-deb`, `zip` und `unzip`. Befehle laufen ohne `sudo`, ohne Shell-Verkettung und mit Zeitlimit. Buildskripte sind ausführbarer Projektcode; aktiviere die Freigabe nur für vertrauenswürdige Projekte.
+LunaGPT kann auf ausdrücklichen Auftrag Build- und Prüfskripte direkt im aktuell ausgewählten Projektordner ausführen. Dafür müssen Lese-, Schreib- und die separate Build-Ausführungsfreigabe aktiviert sein. 
+Die Build-Freigabe ist standardmäßig ausgeschaltet und wird beim Wechsel des Projektordners zurückgesetzt. Unterstützt werden `build_deb.sh`, `build_release.sh` und `release.sh` 
+im Projektstamm sowie begrenzte Prüfungen mit Python `py_compile`, `dpkg-deb`, `zip` und `unzip`. Befehle laufen ohne `sudo`, ohne Shell-Verkettung und mit Zeitlimit. Buildskripte sind ausführbarer Projektcode; aktiviere die Freigabe nur für vertrauenswürdige Projekte.
 
 ### Buildskripte in Projekt-Unterordnern
 
-Die Projekt-Buildwerkzeuge unterstützen freigegebene Skripte `build_deb.sh`, `build_release.sh` und `release.sh` auch in Unterordnern des ausdrücklich ausgewählten Projektordners. Beispiel: `gluecksrad/build_release.sh`. Das Skript wird im eigenen Verzeichnis ausgeführt, sodass relative Pfade wie `release/` korrekt auf den Unterordner zeigen. Absolute Pfade, Pfadaufstiege (`..`) und Symlinks außerhalb des Projektordners werden weiterhin abgewiesen.
+Die Projekt-Buildwerkzeuge unterstützen freigegebene Skripte `build_deb.sh`, `build_release.sh` und `release.sh` auch in Unterordnern des ausdrücklich ausgewählten Projektordners. Beispiel: `gluecksrad/build_release.sh`. Das Skript wird im eigenen Verzeichnis ausgeführt, 
+sodass relative Pfade wie `release/` korrekt auf den Unterordner zeigen. Absolute Pfade, Pfadaufstiege (`..`) und Symlinks außerhalb des Projektordners werden weiterhin abgewiesen.
 
 
 ## Installation mit Debian-Paket (empfohlen)
@@ -61,7 +92,7 @@ Benötigt wird Debian 13 / Raspberry Pi OS mit ARM64 oder eine kompatible Debian
 
 ```bash
 sudo apt update
-sudo apt install ./lunagpt_1.12.9_all.deb
+sudo apt install ./lunagpt_1.13.0_all.deb
 # Benötigte MBROLA-Sprachausgabe:
 sudo apt install mbrola mbrola-de4 mbrola-en1
 ```
@@ -69,7 +100,7 @@ sudo apt install mbrola mbrola-de4 mbrola-en1
 Falls `apt` fehlende Abhängigkeiten meldet, installiert es diese normalerweise automatisch. Alternativ können die Laufzeitpakete vorab installiert werden:
 
 ```bash
-sudo apt install python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4 mbrola-en1
+sudo apt install dpkg zip unzip python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4 mbrola-en1
 ```
 
 Start über das Anwendungsmenü oder im Terminal:
@@ -89,7 +120,7 @@ Das DEB installiert den Starter nach `/usr/bin/lunagpt` und die Anwendung nach `
 ```bash
 cd LunaGPT
 sudo apt update
-sudo apt install python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4 mbrola-en1
+sudo apt install dpkg zip unzip python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4 mbrola-en1
 python3 lunagpt/main.py
 ```
 
@@ -103,7 +134,8 @@ LunaGPT verwendet für Deutsch die MBROLA-Stimme `de4` und für Englisch die bri
 sudo apt install mbrola mbrola-de4 mbrola-en1
 ```
 
-MBROLA stellt die Stimmen für beide Oberflächensprachen bereit: `de4` für Deutsch und `en1` für britisches Englisch. eSpeak-NG dient als technische Ansteuerung. Falls `apt` eines der MBROLA-Stimmenpakete nicht findet, prüfe, ob die Debian-Paketquellen `contrib` und `non-free` aktiviert sind. Die Stimmen werden lokal installiert und benötigen zur Wiedergabe keine Internetverbindung.
+MBROLA stellt die Stimmen für beide Oberflächensprachen bereit: `de4` für Deutsch und `en1` für britisches Englisch. eSpeak-NG dient als technische Ansteuerung. Falls `apt` eines der MBROLA-Stimmenpakete nicht findet, prüfe, ob die Debian-Paketquellen `contrib` und `non-free` aktiviert sind. 
+Die Stimmen werden lokal installiert und benötigen zur Wiedergabe keine Internetverbindung.
 
 ## Spracheingabe (optional)
 
@@ -141,14 +173,14 @@ Im Projektverzeichnis:
 ./build_deb.sh
 ```
 
-Benötigt wird `dpkg-deb`. Die Paketversion wird automatisch aus `lunagpt/version.py` gelesen; die Versionsnummer muss im Build-Skript nicht separat gepflegt werden. Das fertige Paket liegt unter `dist/lunagpt_1.12.2_all.deb`.
+Benötigt werden `dpkg-deb`, `zip` und `unzip` (auf Debian liefert das Paket `dpkg` das Werkzeug `dpkg-deb`). Die Paketversion wird automatisch aus `lunagpt/version.py` gelesen; die Versionsnummer muss im Build-Skript nicht separat gepflegt werden. Das fertige Paket liegt unter `dist/lunagpt_1.13.0_all.deb`.
 
 ## Prüfen
 
 ```bash
 python3 -m py_compile lunagpt/main.py lunagpt/siwc.py lunagpt/version.py
-dpkg-deb -I dist/lunagpt_1.12.9_all.deb
-dpkg-deb -c dist/lunagpt_1.12.9_all.deb
+dpkg-deb -I dist/lunagpt_1.13.0_all.deb
+dpkg-deb -c dist/lunagpt_1.13.0_all.deb
 ```
 
 ## Projektstruktur
