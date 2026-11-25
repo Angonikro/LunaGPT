@@ -271,7 +271,7 @@ def _memory_file_dialog(parent, title, filename, name_filter, save=False):
     else:
         dialog.setAcceptMode(QFileDialog.AcceptOpen)
         dialog.setFileMode(QFileDialog.ExistingFile)
-    dialog._schedule_button_retranslation()
+    dialog._schedule_retranslation()
     return dialog
 
 
