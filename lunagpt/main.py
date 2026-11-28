@@ -1,16 +1,76 @@
 #!/usr/bin/env python3
 import os, sys, ast, json, base64, mimetypes, sqlite3, filecmp, difflib, urllib.request, urllib.error, uuid, subprocess, tempfile, time, queue, threading, re, zipfile, shutil, shlex, stat
+try:
+    import pty
+except ImportError:
+    pty = None
 from pathlib import Path
 from datetime import datetime
-from PySide6.QtCore import Qt, QThread, Signal, QSize, QTimer, QUrl, QDir, QSettings, QFileSystemWatcher
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QTimer, QUrl, QDir, QSettings, QFileSystemWatcher, QProcess, QSocketNotifier
 from PySide6.QtGui import (QFont, QAction, QPixmap, QImage, QTextCursor, QDesktopServices, QSyntaxHighlighter, QTextCharFormat, QColor, QPainter, QTextFormat)
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QTextBrowser, QTextEdit, QPushButton, QLabel, QLineEdit,
     QFileDialog, QMessageBox, QComboBox, QCheckBox, QSplitter, QInputDialog, QDialog,
-    QFormLayout, QDialogButtonBox, QPlainTextEdit, QProgressBar, QMenu, QSlider, QFileSystemModel, QTreeView, QStackedWidget)
+    QFormLayout, QDialogButtonBox, QPlainTextEdit, QScrollArea, QFrame, QProgressBar, QMenu, QSlider, QFileSystemModel, QTreeView, QStackedWidget, QTreeWidget, QTreeWidgetItem, QTabWidget)
 
-UI_TRANSLATIONS = {'LunaGPT – Einstellungen': 'LunaGPT – Settings', 'sk-… (bleibt lokal auf diesem Rechner)': 'sk-… (stays on this computer)', 'Schlüssel anzeigen': 'Show key', 'Antworten automatisch vorlesen': 'Read answers aloud automatically', 'Sprachmodule neu erkennen': 'Detect voice modules again', 'OpenAI-API-Schlüssel': 'OpenAI API key', 'Der Schlüssel wird lokal mit Dateirechten 600 gespeichert.': 'The key is stored locally with file permissions 600.', 'Modell': 'Model', 'Stimme': 'Voice', 'Sprechtempo': 'Speaking rate', 'Tonhöhe': 'Pitch', 'Sprachlautstärke': 'Speech volume', 'Soundkarte für Luna': 'Audio output for Luna', '🔊 Testton / Stimme testen': '🔊 Test tone / voice', 'Wählt das ALSA-Ausgabegerät für Lunas Sprachausgabe.': "Selects the ALSA output device for Luna's speech.", 'Die Liste wird aus den installierten eSpeak-NG- und MBROLA-Stimmen ermittelt.': 'The list is populated from installed eSpeak NG and MBROLA voices.', 'Mikrofon für Spracheingabe': 'Microphone for voice input', 'Die Auswahl wird gespeichert. Der Spracheingabe-Knopf startet die Aufnahme direkt.': 'The selection is saved. The voice input button starts recording directly.', 'Speichern': 'Save', 'Abbrechen': 'Cancel', 'Sprachmodule': 'Voice modules', 'Erkennung abgeschlossen.  Stimmen gefunden. Nicht jede gelistete Stimme ist automatisch abspielbar; nutze zum Prüfen den Soundtest.': 'Detection complete. Found  voices. Not every listed voice is necessarily playable; use the sound test to check.', 'Teste Audio …': 'Testing audio …', 'Der Audiotest wurde erfolgreich abgespielt.': 'The audio test played successfully.', 'Soundtest': 'Sound test', 'Soundtest fehlgeschlagen': 'Sound test failed', 'Programm nicht gefunden: \n\nBitte installiere es mit: sudo apt install espeak-ng alsa-utils': 'Program not found:\n\nPlease install it with: sudo apt install espeak-ng alsa-utils', 'LunaGPT – Kostenlose Online-Bildgenerierung': 'LunaGPT – Free online image generation', 'Beschreibe das Bild, das kostenlos online erzeugt werden soll:': 'Describe the image to generate online for free:', 'Zum Beispiel: Ein rotes Haus auf einer grünen Wiese, sonniger Tag, digitale Malerei': 'For example: a red house on a green meadow, sunny day, digital painting', 'Bildgröße:': 'Image size:', 'AI Horde · anonym und kostenlos · 256 × 256 Pixel\nKein kostenpflichtiger Ersatzdienst. Bilder werden nicht automatisch gespeichert.': 'AI Horde · anonymous and free · 256 × 256 pixels\nNo paid replacement service. Images are not saved automatically.', 'Hier erscheint das erzeugte Bild.': 'The generated image will appear here.', 'Bereit · Verstrichene Zeit: 00:00': 'Ready · Elapsed time: 00:00', '🎨 Bild erzeugen': '🎨 Generate image', 'Bild speichern unter …': 'Save image as …', 'Schließen': 'Close', 'Rückgängig': 'Undo', 'Wiederholen': 'Redo', 'Ausschneiden': 'Cut', 'Kopieren': 'Copy', 'Einfügen': 'Paste', 'Alles auswählen': 'Select all', 'Löschen': 'Delete', 'AI Horde · anonym und kostenlos ·  ×  Pixel\nKein kostenpflichtiger Ersatzdienst. Bilder werden nicht automatisch gespeichert.': 'AI Horde · anonymous and free ·  ×  pixels\nNo paid replacement service. Images are not saved automatically.', 'Bild wird online erzeugt … · Verstrichene Zeit: : min': 'Generating image online … · Elapsed time: : min', 'Bildbeschreibung fehlt': 'Image description missing', 'Bitte gib zuerst eine Beschreibung ein.': 'Please enter a description first.', 'Bild wird online erzeugt … · Verstrichene Zeit: 00:00 min': 'Generating image online … · Elapsed time: 00:00 min', 'Bild wird erzeugt …': 'Generating image …', 'Die Bilderzeugung ist fehlgeschlagen.': 'Image generation failed.', 'Fehler beim Bildgenerator · Verstrichene Zeit: ': 'Image generator error · Elapsed time: ', 'Bildgenerierung fehlgeschlagen': 'Image generation failed', 'Das Bild konnte nicht angezeigt werden.': 'The image could not be displayed.', 'Fertig · Verstrichene Zeit: \nNicht dauerhaft gespeichert. Bei Bedarf auf ‚Bild speichern unter …‘ klicken.': 'Done · Elapsed time: \nNot saved permanently. Click ‘Save image as …’ if needed.', 'Bild wird noch erzeugt': 'Image is still being generated', 'Bitte warte, bis die laufende Bilderzeugung abgeschlossen ist.': 'Please wait until the current image generation has finished.', 'Bild manuell gespeichert: ': 'Image saved manually: ', 'Speichern fehlgeschlagen': 'Save failed', 'LunaGPT – lokaler Projektmanager': 'LunaGPT – Local project manager', 'Neue Datei': 'New file', 'Neuer Ordner': 'New folder', 'Im Dateimanager öffnen': 'Open in file manager', 'Datei auswählen, um sie anzuzeigen': 'Select a file to view it', 'Textdateien können hier angezeigt und bearbeitet werden.': 'Text files can be viewed and edited here.', 'Änderungen speichern': 'Save changes', 'Neu laden': 'Reload', 'Die Datei liegt außerhalb des ausgewählten Projektordners.': 'The file is outside the selected project folder.', 'Zugriff verweigert': 'Access denied', 'Datei zu groß': 'File too large', 'Dateien über 2 MB werden im Editor nicht geöffnet. Du kannst sie im Dateimanager öffnen.': 'Files larger than 2 MB are not opened in the editor. You can open them in the file manager.', 'Neue Dateien dürfen nur innerhalb des ausgewählten Projektordners erstellt werden.': 'New files can only be created inside the selected project folder.', 'Ungültiger Pfad': 'Invalid path', 'Datei konnte nicht erstellt werden': 'Could not create file', 'Bitte einen einfachen Ordnernamen ohne Pfadangaben verwenden.': 'Please use a simple folder name without path components.', 'Ungültiger Name': 'Invalid name', 'Ein Ordner oder eine Datei mit diesem Namen existiert bereits.': 'A folder or file with this name already exists.', 'Ordner vorhanden': 'Folder already exists', 'Ordner konnte nicht erstellt werden': 'Could not create folder', 'Gespeichert': 'Saved', 'LunaGPT – Sicherungsverwaltung': 'LunaGPT – Backup manager', 'Geschützte Projektsicherungen. Wähle links eine Sicherung aus, um Inhalt und Unterschiede zum aktuellen Stand zu sehen.': 'Protected project backups. Select a backup on the left to view its contents and differences from the current state.', 'Sicherung auswählen': 'Select a backup', 'Inhalt der Sicherung bzw. Vergleich erscheint hier.': 'Backup contents or comparison will appear here.', 'Aktualisieren': 'Refresh', 'Mit Original vergleichen': 'Compare with original', 'Wiederherstellen …': 'Restore …', 'Keine Sicherungen gefunden.': 'No backups found.', 'Sicherungen konnten nicht geladen werden': 'Could not load backups', '<b>Sicherung:</b> <br><b>Datei:</b> <br><b>Größe:</b>  Byte': '<b>Backup:</b> <br><b>File:</b> <br><b>Size:</b> bytes', 'Sicherung nicht lesbar': 'Backup cannot be read', '<b>Sicherung:</b> <br><b>Datei:</b> <br><b>Vergleich:</b> ': '<b>Backup:</b> <br><b>File:</b> <br><b>Comparison:</b> ', 'Vergleich fehlgeschlagen': 'Comparison failed', 'Aktiviere zuerst „KI darf Projektdateien ändern“.': 'First enable “AI may modify project files”.', 'Schreibzugriff fehlt': 'Write access not enabled', 'Wiederherstellung erfolgreich': 'Restore successful', 'Datei wiederhergestellt: \n\nQuelle: \nZusätzliche Sicherung des vorherigen Stands:\n\n\nDie Sicherheitskopie wurde vor dem Zurückspielen geprüft.': 'File restored: \n\nSource: \nAdditional backup of the previous state:\n\n\nThe backup was checked before restoration.', 'Wiederherstellung fehlgeschlagen': 'Restore failed', 'LunaGPT – dein KI-Client': 'LunaGPT – your AI client', '🐭 LunaGPT': '🐭 LunaGPT', '＋  Neuer Chat': '＋  New chat', '🗃  Archivierte Chats anzeigen': '🗃  Show archived chats', '💬  Neue Chats anzeigen': '💬  Show new chats', 'Mit ChatGPT anmelden': 'Sign in with ChatGPT', 'Mit deinem ChatGPT-Konto anmelden; Google kann im Browser ausgewählt werden.': 'Sign in with your ChatGPT account; Google can be selected in the browser.', '🌐  Globales Gedächtnis': '🌐  Global memory', '📤  Chats exportieren': '📤  Export chats', '📂  Arbeitsbereich öffnen': '📂  Open workspace', 'Aktueller Speicherort für KI-erstellte Dateien': 'Current location for AI-generated files', 'Speicherort ändern …': 'Change location …', '📁  Projektordner wählen …': '📁  Choose project folder …', '🗂  Projektmanager öffnen': '🗂  Open project manager', '🛡  Sicherungen verwalten': '🛡  Manage backups', 'KI darf Projektdateien lesen': 'AI may read project files', 'KI darf Projektdateien ändern': 'AI may modify project files', 'Nur aktivieren, wenn Luna auf ausdrücklichen Auftrag Dateien im ausgewählten Projekt ändern darf. Vorhandene Dateien werden gesichert.': 'Enable only if Luna is allowed to modify files in the selected project on your explicit instruction. Existing files are backed up.', 'KI darf Build-Befehle ausführen': 'AI may run build commands', 'Erlaubt Luna ausdrücklich angeforderte Buildskripte sowie begrenzte Paket- und ZIP-Prüfungen im aktuell ausgewählten Projektordner. Nur für vertrauenswürdige Projekte aktivieren.': 'Allows Luna to run explicitly requested build scripts and limited package and ZIP checks in the currently selected project folder. Enable only for trusted projects.', '📥  Chats importieren': '📥  Import chats', '☀  Helles Design': '☀  Light theme', '⚙  Einstellungen': '⚙  Settings', 'Bereit': 'Ready', 'Wie kann ich helfen?': 'How can I help?', 'Modus': 'Mode', 'Websuche': 'Web search', 'Nutzt die Websuche der OpenAI API; kann zusätzliche API-Kosten verursachen.': 'Uses OpenAI API web search; may incur additional API costs.', '❔': '❔', 'Hilfe & Schritt-für-Schritt-Anleitung': 'Help & step-by-step guide', 'Installierte Programmversion': 'Installed application version', '🐭  Luna überlegt': '🐭  Luna is thinking', 'Keine Anhänge': 'No attachments', 'Schreibe Luna eine Nachricht …  (Enter = Senden, Umschalt+Enter = neue Zeile)': 'Write a message to Luna …  (Enter = send, Shift+Enter = new line)', '＋ Datei/Bild': '＋ File/image', '🎙 Spracheingabe': '🎙 Voice input', '🔊 Vorlesen': '🔊 Read aloud', '⏹ Vorlesen beenden': '⏹ Stop reading', 'Senden  ➤': 'Send  ➤', 'LunaGPT – Hilfe & Schritt-für-Schritt-Anleitung': 'LunaGPT – Help & step-by-step guide', 'Speicherort geändert': 'Location changed', 'Kein Projektordner ausgewählt': 'No project folder selected', 'Bitte zuerst einen gültigen Projektordner auswählen.': 'Please select a valid project folder first.', 'Kein Projektordner': 'No project folder', 'Lesezugriff fehlt': 'Read access not enabled', 'Globales Gedächtnis': 'Global memory', 'Speichere Hinweise, Projektnotizen oder bevorzugte Anweisungen. Passende Einträge werden bei jeder Anfrage als Kontext mitgesendet.': 'Save hints, project notes or preferred instructions. Relevant entries are included as context with every request.', 'Ausgewählten löschen': 'Delete selected', '＋ Eintrag hinzufügen': '＋ Add entry', '✓ ChatGPT abmelden': '✓ Sign out of ChatGPT', 'Lokale ChatGPT-Anmeldedaten entfernen': 'Remove local ChatGPT sign-in data', 'ChatGPT angemeldet: ': 'ChatGPT signed in: ', 'Konto verbunden': 'Account connected', 'API-Schlüssel eingerichtet': 'API key configured', 'Nicht verbunden – anmelden oder API-Schlüssel eintragen': 'Not connected – sign in or enter an API key', 'ChatGPT abmelden': 'Sign out of ChatGPT', 'Möchtest du die ChatGPT-Anmeldedaten auf diesem Rechner entfernen?': 'Do you want to remove the ChatGPT sign-in data from this computer?', 'Abgemeldet': 'Signed out', 'Die lokal gespeicherten ChatGPT-Tokens wurden entfernt. Die Client-Registrierung bleibt für eine spätere Anmeldung erhalten.': 'The locally stored ChatGPT tokens were removed. The client registration remains available for a future sign-in.', 'Browser-Anmeldung wird vorbereitet …': 'Preparing browser sign-in …', 'ChatGPT verbunden': 'ChatGPT connected', 'LunaGPT ist mit  verbunden. Unterstützte Anfragen verwenden jetzt den autorisierten ChatGPT-Tarif.': 'LunaGPT is connected to . Supported requests now use the authorized ChatGPT plan.', 'ChatGPT-Anmeldung fehlgeschlagen': 'ChatGPT sign-in failed', 'Export abgeschlossen': 'Export complete', 'Chats und  Gedächtniseinträge wurden exportiert.': ' chats and  knowledge entries were exported.', 'Export fehlgeschlagen': 'Export failed', 'Import abgeschlossen': 'Import complete', 'Chats und  Gedächtniseinträge importiert.': ' chats and  knowledge entries imported.', 'Import fehlgeschlagen': 'Import failed', 'Die Datei konnte nicht importiert werden.\n\n': 'The file could not be imported.\n\n', 'Umbenennen': 'Rename', 'Chat endgültig löschen': 'Permanently delete chat', 'Markierten Text kopieren': 'Copy selected text', 'Alles markieren': 'Select all text', 'Datei nicht lesbar': 'File cannot be read', 'Datei(en) angehängt': 'file(s) attached', 'Dateien oder Bilder anhängen': 'Attach files or images', 'Öffnen': 'Open', 'Bitte erst einen neuen Chat öffnen.': 'Please open a new chat first.', 'Kein Chat': 'No chat', 'Luna denkt …': 'Luna is thinking …', 'Antwort erhalten': 'Response received', 'Antwort im ursprünglichen Chat gespeichert': 'Response saved in the original chat', 'Fehler': 'Error', 'OpenAI-Verbindungsfehler': 'OpenAI connection error', 'Prüfe Schlüssel, Modellzugriff, API-Guthaben und Internetverbindung.': 'Check your key, model access, API balance and internet connection.', 'Sprachausgabe beendet': 'Speech playback stopped', 'Es gibt noch keine Antwort zum Vorlesen.': 'There is no answer to read aloud yet.', 'Vorlesen': 'Read aloud', 'Spracheingabe: Mikrofon wird vorbereitet …': 'Voice input: preparing microphone …', 'Spracheingabe fertig': 'Voice input complete', 'Für die Spracheingabe fehlt SpeechRecognition.\n\nInstallation für den System-Python unter Debian:\npython3 -m pip install --user --break-system-packages SpeechRecognition\nsudo apt install python3-pyaudio alsa-utils': 'SpeechRecognition is missing for voice input.\n\nInstall for the system Python on Debian:\npython3 -m pip install --user --break-system-packages SpeechRecognition\nsudo apt install python3-pyaudio alsa-utils', 'Spracheingabe': 'Voice input', 'Mikrofon nicht verfügbar': 'Microphone unavailable', 'Das gespeicherte Mikrofon ist nicht mehr vorhanden.': 'The saved microphone is no longer available.', 'Innerhalb von 8 Sekunden wurde keine Sprache erkannt. Bitte erneut versuchen.': 'No speech was detected within 8 seconds. Please try again.', 'Die Aufnahme war möglich, aber der Online-Dienst konnte die Sprache nicht erkennen. Bitte deutlicher oder näher am Mikrofon sprechen.': 'Recording worked, but the online service could not recognize the speech. Please speak more clearly or closer to the microphone.', 'Spracheingabe – Internetdienst nicht erreichbar': 'Voice input – online service unavailable', 'Google Speech Recognition konnte nicht erreicht werden. Prüfe die Internetverbindung.': 'Google Speech Recognition could not be reached. Check your internet connection.', 'Spracheingabe fehlgeschlagen': 'Voice input failed', 'Neuer Chat': 'New chat', 'Allgemein': 'General', 'Programmiermodus': 'Coding mode', 'Deutsch': 'German', 'Englisch': 'English', 'Sprache der Benutzeroberfläche': 'Interface language', 'Ja': 'Yes', 'Nein': 'No', 'Übernehmen': 'Apply', 'Verwerfen': 'Discard', 'Erneut versuchen': 'Retry', 'Datei': 'File', 'Chat': 'Chat', 'Du': 'You', 'Aktueller Chat:': 'Current chat:', 'Projektordner: ': 'Project folder: ', 'Sicherung:': 'Backup:', 'Datei:': 'File:', 'Größe:': 'Size:', 'Wissen hinzufügen': 'Add knowledge', 'Titel:': 'Title:', 'Notiz / Wissen:': 'Note / knowledge:', 'Mikrofon': 'Microphone', 'Willkommen bei LunaGPT': 'Welcome to LunaGPT', 'Diese Anleitung führt dich vom ersten Chat bis zur Arbeit an einem eigenen Softwareprojekt. Du kannst sie jederzeit über': 'This guide takes you from your first chat to working on your own software project. You can reopen it at any time using', '❔-Schaltfläche oben rechts': 'the ❔ button in the upper right', '1. LunaGPT zum ersten Mal starten': '1. Starting LunaGPT for the first time', 'Starte LunaGPT über das Anwendungsmenü oder mit dem Terminalbefehl': 'Start LunaGPT from the application menu or with the terminal command', 'Klicke links auf': 'Click on the left', 'Der Browser öffnet den Anmeldevorgang. Melde dich dort mit deinem Konto an und kehre anschließend zu LunaGPT zurück.': 'The browser will open the sign-in process. Sign in with your account and then return to LunaGPT.', 'Wenn LunaGPT nach einem API-Schlüssel oder einer weiteren Einrichtung fragt, folge den Hinweisen im jeweiligen Dialog. ChatGPT-Anmeldung und API-Zugang sind unterschiedliche Zugangswege.': 'If LunaGPT asks for an API key or additional setup, follow the instructions in the dialog. ChatGPT sign-in and API access are two different access methods.', 'Über': 'Using', 'kannst du die verfügbaren Programmoptionen anpassen.': 'to adjust the available application options.', '2. Einen normalen Chat führen': '2. Having a regular chat', 'Schreibe deine Frage unten in das Eingabefeld. Mit': 'Write your question in the input field below. Use', 'sendest du die Nachricht; mit': 'to send the message; use', 'fügst du einen Zeilenumbruch ein.': 'to insert a line break.', 'kannst du Dateien oder Bilder an eine Nachricht anhängen. Prüfe vor dem Senden, ob der richtige Anhang angezeigt wird.': 'to attach files or images to a message. Check that the correct attachment is shown before sending.', 'kannst du – sofern dein verwendeter Zugang dies unterstützt – eine Websuche für die Anfrage aktivieren.': 'to enable web search for the request, if your access method supports it.', 'eignet sich für Alltagsfragen.': 'is suitable for everyday questions.', 'ist für Programmieraufgaben und technische Analysen gedacht.': 'is intended for programming tasks and technical analysis.', 'kannst du eine Nachricht diktieren. Dafür müssen Mikrofon und optionale Spracherkennungs-Abhängigkeiten eingerichtet sein.': 'lets you dictate a message. A microphone and the optional speech-recognition dependencies must be set up.', 'liest die letzte Antwort vor;': 'reads the last answer aloud;', 'stoppt die Wiedergabe.': 'stops playback.', 'Deine Chats erscheinen links in der Chatliste. Über das Kontextmenü eines Chats stehen weitere Chat-Aktionen zur Verfügung. Archivierte Chats erreichst du über': 'Your chats appear in the list on the left. The chat context menu provides additional actions. You can access archived chats using', 'Chats lassen sich über das Menü „Datei“ importieren und exportieren.': 'You can also export and import chats using the buttons.', '3. Den Arbeitsbereich für erzeugte Dateien verstehen': '3. Understanding the workspace for generated files', 'Der Arbeitsbereich ist der Speicherort für Dateien, die LunaGPT im Rahmen deiner Chats erstellt.': 'The workspace is where LunaGPT stores files it creates during your chats.', 'öffnest du den Ordner des aktuellen Chats im Dateimanager.': "opens the current chat's folder in the file manager.", 'kannst du den übergeordneten Speicherort anpassen.': 'lets you change the parent location.', 'Jeder Chat erhält einen eigenen Unterordner. Bereits erstellte Dateien werden beim Ändern des Speicherorts nicht automatisch verschoben.': 'Each chat gets its own subfolder. Existing files are not moved automatically when you change the location.', 'Hinweis:': 'Note:', 'Der Arbeitsbereich für neu erzeugte Chat-Dateien ist nicht dasselbe wie ein ausgewählter Projektordner. Für die Analyse und Bearbeitung eines bestehenden Softwareprojekts verwendest du die folgenden Schritte.': 'The workspace for newly generated chat files is not the same as a selected project folder. Use the following steps to analyze and edit an existing software project.', '4. Ein eigenes Projekt beginnen – Schritt für Schritt': '4. Starting your own project – step by step', 'Projekt auswählen:': 'Select a project:', 'Wähle zuerst den Projektordner aus, in dem sich die Dateien befinden.': 'First select the project folder containing the files.', 'Freigaben einschalten:': 'Enable permissions:', 'Änderung ausdrücklich beauftragen:': 'Explicitly request the change:', 'Ergebnis kontrollieren:': 'Review the result:', 'Build-Befehle im ausgewählten Projektordner ausführen': 'Run build commands in the selected project folder', 'Sicherungen verwalten und Änderungen zurücknehmen': 'Manage backups and revert changes', 'Projektmanager, globales Gedächtnis und Chats': 'Project manager, global memory and chats', 'Gute Arbeitsweise bei Softwareprojekten': 'Good practices for software projects', 'Wenn etwas nicht funktioniert': 'If something does not work', 'Keine Antwort:': 'No response:', 'Prüfe die Anmeldung bzw. den verwendeten Zugang und die Internetverbindung. Lies die angezeigte Fehlermeldung vollständig.': 'Check your sign-in or access method and your internet connection. Read the displayed error message in full.', 'Spracheingabe funktioniert nicht:': 'Voice input does not work:', 'Projekt wird nicht angezeigt:': 'Project is not displayed:', 'KI kann Dateien nicht lesen:': 'AI cannot read files:', 'KI kann Dateien nicht ändern:': 'AI cannot modify files:', 'Wiederherstellung:': 'Restore:', 'Grundregel:': 'Basic rule:', 'Erst auswählen, dann lesen lassen, Analyse prüfen, Änderung planen, gezielt freigeben und anschließend kontrollieren. So behältst du jederzeit die Übersicht über dein Projekt.': 'Select first, then allow reading, review the analysis, plan the change, grant permission deliberately, and check the result. This keeps you in control of your project.', 'Datei ändern': 'Modify file', 'Ungespeicherte Änderungen': 'Unsaved changes', 'Die aktuelle Datei wurde geändert. Änderungen verwerfen und eine andere Datei öffnen?': 'The current file has been modified. Discard changes and open another file?', 'Extern öffnen': 'Open externally', 'Möchtest du diese Datei mit der zugeordneten Anwendung öffnen?': 'Do you want to open this file with its associated application?', 'Keine Textdatei': 'Not a text file', 'Diese Datei kann nicht als UTF-8-Text angezeigt werden. Mit der zugeordneten Anwendung öffnen?': 'This file cannot be displayed as UTF-8 text. Open it with its associated application?', 'Neuen Ordner erstellen': 'Create new folder', 'Ordnername:': 'Folder name:', 'Datei gespeichert:': 'File saved:', 'Identisch mit dem aktuellen Original.': 'Identical to the current original.', 'Unterschiede gefunden.': 'Differences found.', 'ERGEBNIS: IDENTISCH': 'RESULT: IDENTICAL', 'Sicherung und Original haben denselben Inhalt.': 'The backup and original have the same contents.', 'ERGEBNIS: UNTERSCHIEDE GEFUNDEN': 'RESULT: DIFFERENCES FOUND', '=== ÄNDERUNGEN ===': '=== CHANGES ===', '=== INHALT DER SICHERUNG ===': '=== BACKUP CONTENTS ===', '=== AKTUELLER ORIGINALINHALT ===': '=== CURRENT ORIGINAL CONTENTS ===', 'Die Datei „': 'The file “', ' wird auf den Stand der Sicherung\n': ' will be restored to the backup state\n', ' zurückgesetzt.\n\n': '\n\n', 'Der aktuelle Stand wird vorher zusätzlich gesichert und überprüft.\n': 'The current state will also be backed up and checked first.\n', 'Möchtest du fortfahren?': 'Do you want to continue?', 'Chat archivieren?': 'Archive chat?', 'Soll der aktuelle Chat „': 'Should the current chat “', '“ beim Beenden archiviert werden?': '” be archived when exiting?', 'Ja = archivieren und beenden\nNein = ohne Archivierung beenden\nAbbrechen = weiterarbeiten': 'Yes = archive and exit\nNo = exit without archiving\nCancel = continue working', 'Unterstützte Dateien': 'Supported files', 'Alle Dateien': 'All files', 'Aktueller Chat:\n': 'Current chat:\n', 'API-Schlüssel': 'API key', 'OK': 'OK', 'Deutsch – eSpeak NG Standard': 'German – eSpeak NG standard', ' ×  Pixel': ' ×  pixels', 'Bild speichern': 'Save image', 'Neue Projektdatei erstellen': 'Create new project file', 'Ein Bild kostenlos und anonym online mit AI Horde erzeugen.': 'Generate an image online for free and anonymously with AI Horde.', 'Speicherort für erstellte Dateien auswählen': 'Choose storage location for generated files', 'Projekt: ': 'Project: ', 'Öffnet den Projektmanager für ': 'Opens the project manager for ', 'Lokalen Projektordner auswählen': 'Choose local project folder', 'Aktiviere zuerst „KI darf Projektdateien lesen“.': 'First enable “AI may read project files”.', '🌙  Dunkles Design': '🌙  Dark theme', 'LunaGPT': 'LunaGPT', 'Chats exportieren': 'Export chats', 'LunaGPT-Export importieren': 'Import LunaGPT export', '🗃  Aktive Chats anzeigen': '🗃  Show active chats', 'Archivieren': 'Archive', 'Aus Archiv holen': 'Unarchive', 'Anhänge: ': 'Attachments: ', 'Alle Dateien (*)': 'All files (*)', 'Unterstützte Dateien (*.png *.jpg *.jpeg *.webp *.gif *.pdf *.txt *.md *.py *.js *.json *.html *.css *.xml *.csv *.ini *.log *.sh *.c *.cpp *.h *.yml *.yaml *.toml *.sql *.zip *.deb)': 'Supported files (*.png *.jpg *.jpeg *.webp *.gif *.pdf *.txt *.md *.py *.js *.json *.html *.css *.xml *.csv *.ini *.log *.sh *.c *.cpp *.h *.yml *.yaml *.toml *.sql *.zip *.deb)', 'lunagpt': 'lunagpt', '„Mit ChatGPT anmelden“': '“Sign in with ChatGPT”', '„Einstellungen“': '“Settings”', '„＋ Neuer Chat“': '“＋ New chat”', 'Enter': 'Enter', 'Umschalt+Enter': 'Shift+Enter', 'Vorlesen beenden': 'Stop reading', '„Archivierte Chats anzeigen“': '“Show archived chats”', '„Arbeitsbereich öffnen“': '“Open workspace”', '„Speicherort ändern …“': '“Change location …”', 'Projektordner vorbereiten:': 'Prepare a project folder:', 'Lege im Dateimanager einen Ordner für dein Projekt an oder verwende einen bereits vorhandenen Ordner. Wähle möglichst den obersten Ordner, der zum Projekt gehört.': 'Create a folder for your project in the file manager or use an existing folder. If possible, select the top-level folder belonging to the project.', 'Klicke in LunaGPT links auf': 'In LunaGPT, click on the left', '„📁 Projektordner wählen …“': '“📁 Choose project folder …”', 'und wähle genau diesen Ordner. Danach wird der ausgewählte Pfad links angezeigt.': 'and select that folder. The selected path will then be displayed on the left.', 'Projektmanager öffnen:': 'Open the project manager:', 'Klicke auf': 'Click', '„🗂 Projektmanager öffnen“': '“🗂 Open project manager”', '. Dort kannst du die Projektdateien und Ordner ansehen und – je nach Funktion – Dateien im Editor öffnen.': '. There you can view project files and folders and, depending on the function, open files in the editor.', 'Lesezugriff bewusst freigeben:': 'Grant read access deliberately:', 'Aktiviere': 'Enable', '„KI darf Projektdateien lesen“': '“AI may read project files”', ', wenn Luna die Projektdateien untersuchen soll. Ohne diese Freigabe soll Luna keine Projektdateien lesen.': ', if Luna is to inspect project files. Without this permission, Luna must not read project files.', 'Mit einer Analyse beginnen:': 'Start with an analysis:', 'Starte einen neuen Chat und schreibe zum Beispiel:': 'Start a new chat and write, for example:', '„Analysiere bitte zuerst die Struktur dieses Projekts. Ändere noch keine Dateien. Nenne mir die wichtigsten Dateien, mögliche Probleme und einen sinnvollen nächsten Schritt.“': '“Please analyze the structure of this project first. Do not change any files yet. Tell me the most important files, possible problems and a sensible next step.”', 'Analyse abwarten:': 'Wait for the analysis:', 'Luna kann zunächst die Projektstruktur und Python-Dateien untersuchen und eine Syntaxprüfung durchführen. Eine solche statische Prüfung führt den Programmcode nicht aus und ersetzt keinen Praxistest.': 'Luna can first inspect the project structure and Python files and perform a syntax check. Such a static check does not execute the program code and does not replace a practical test.', 'Änderungsplan anfordern:': 'Request a change plan:', 'Bitte Luna, vor einer Änderung genau aufzulisten, welche Dateien sie ändern möchte, was geändert werden soll und welche Risiken bestehen.': 'Ask Luna to list exactly which files it wants to change, what should be changed and what risks are involved before making any changes.', 'Schreibzugriff nur bei Bedarf aktivieren:': 'Enable write access only when needed:', 'Wenn du den vorgeschlagenen Plan geprüft hast und Änderungen möchtest, aktiviere': 'After reviewing the proposed plan, if you want the changes made, enable', '„KI darf Projektdateien ändern“': '“AI may modify project files”', '. Diese Freigabe erweitert den Zugriff. Aktiviere sie nur für ein Projekt, dem du vertraust.': '. This permission expands access. Enable it only for a project you trust.', 'Schreibe klar, welche geplanten Änderungen Luna durchführen darf. Die allgemeine Freigabe des Schreibzugriffs ist noch kein Auftrag, beliebige Änderungen vorzunehmen.': 'Clearly state which planned changes Luna is allowed to make. General write permission is not an instruction to make arbitrary changes.', 'Lass Luna anschließend die geänderten Dateien und die durchgeführten Prüfungen nennen. Teste die Anwendung selbst auf deinem System.': 'Then ask Luna to list the changed files and checks performed. Test the application yourself on your system.', '5. Build-Befehle im ausgewählten Projektordner ausführen': '5. Run build commands in the selected project folder', 'Wähle zuerst links den Projektordner aus, in dem das Build- oder Prüfsystem liegt.': 'First select the project folder on the left that contains the build or test system.', 'Aktiviere „KI darf Projektdateien lesen“ und „KI darf Projektdateien ändern“. Aktiviere zusätzlich die separate Option': 'Enable “AI may read project files” and “AI may modify project files”. Also enable the separate option', '„KI darf Build-Befehle ausführen“': '“AI may run build commands”', '. Diese Build-Freigabe ist standardmäßig ausgeschaltet und wird beim Wechsel des Projektordners zurückgesetzt.': '. This build permission is disabled by default and is reset when you change the project folder.', 'Build ausdrücklich beauftragen:': 'Explicitly request the build:', 'Bitte LunaGPT ausdrücklich, das vorhandene Build- oder Prüfskript auszuführen. Die eingeschaltete Freigabe allein startet keinen Befehl.': 'Explicitly ask LunaGPT to run the existing build or test script. Enabling the permission alone does not start a command.', 'Ergebnis prüfen:': 'Check the result:', 'LunaGPT zeigt die begrenzte Befehlsausgabe an. Lass dir anschließend nennen, welche Dateien erzeugt wurden und ob ZIP-/DEB-Prüfungen erfolgreich waren.': 'LunaGPT displays the limited command output. Then ask which files were created and whether ZIP/DEB checks succeeded.', 'Sicherheit:': 'Security:', 'Buildskripte sind ausführbarer Projektcode und können selbst weitere Aktionen auslösen. Aktiviere die Freigabe nur für vertrauenswürdige Projekte. Befehle laufen ohne': 'Build scripts are executable project code and can trigger further actions. Enable this permission only for trusted projects. Commands run without', ', ohne Shell-Verkettungen und mit Zeitlimit. Unterstützt werden freigegebene Skripte': ', without shell chaining and with a time limit. Supported approved scripts include', 'sowie begrenzte Python-, dpkg-deb- und ZIP-Prüfungen. Die Funktion ist keine vollständige Betriebssystem-Sandbox.': 'as well as limited Python, dpkg-deb and ZIP checks. This feature is not a full operating-system sandbox.', '5. Sicherungen verwalten und Änderungen zurücknehmen': '5. Manage backups and revert changes', 'Vorhandene Dateien werden bei unterstützten Schreibvorgängen vor dem Überschreiben im Projektordner unter': 'For supported write operations, existing files are backed up in the project folder under', 'gesichert.': 'before being overwritten.', '„🛡 Sicherungen verwalten“': '“🛡 Manage backups”', ', um vorhandene Sicherungen des ausgewählten Projekts anzusehen.': ', to view existing backups for the selected project.', 'Wähle eine Sicherung aus. Du kannst den Inhalt ansehen und – sofern verfügbar – mit dem aktuellen Dateistand vergleichen.': 'Select a backup. You can view its contents and, if available, compare it with the current file.', 'Wenn du eine Sicherung zurückspielen möchtest, prüfe zuerst Datum und Inhalt sorgfältig und bestätige die Wiederherstellung im Dialog.': 'If you want to restore a backup, carefully check its date and contents first, then confirm the restoration in the dialog.', 'Vor einer Wiederherstellung wird der aktuelle Dateistand ebenfalls gesichert. So bleibt auch der Zustand vor dem Zurücksetzen erhalten.': 'Before restoring, the current file is also backed up. This preserves the state from before the rollback.', 'Wichtig:': 'Important:', 'Sicherungen sind kein Ersatz für ein zusätzliches Backup des gesamten Projekts. Lege bei wichtigen Projekten regelmäßig eine Kopie auf einem zweiten Datenträger oder in deinem eigenen Backup-System an.': 'Backups are not a substitute for an additional backup of the entire project. For important projects, regularly keep a copy on a second drive or in your own backup system.', '6. Projektmanager, globales Gedächtnis und Chats': '6. Project manager, global memory and chats', 'Projektmanager:': 'Project manager:', 'Zum Durchsehen und Bearbeiten von Dateien im ausgewählten lokalen Projektordner.': 'For viewing and editing files in the selected local project folder.', 'Sicherungen verwalten:': 'Manage backups:', 'Zum Prüfen, Vergleichen und Wiederherstellen unterstützter Dateisicherungen.': 'For checking, comparing and restoring supported file backups.', 'Globales Gedächtnis:': 'Global memory:', 'Zum Verwalten dauerhafter Erinnerungen, die LunaGPT chatübergreifend automatisch speichern und bei passenden Anfragen berücksichtigen kann. Diese Einträge bleiben auch beim Löschen einzelner Chats erhalten.': 'For managing lasting memories that LunaGPT can save automatically across chats and use in relevant requests. These entries remain even when individual chats are deleted.', 'Chats exportieren/importieren:': 'Export/import chats:', 'Zum Sichern oder Übertragen von Chatverläufen. Importiere nur Dateien aus vertrauenswürdigen Quellen.': 'For backing up or transferring chat histories. Only import files from trusted sources.', 'Design:': 'Theme:', 'Über die Design-Schaltfläche wechselst du zwischen hellem und dunklem Erscheinungsbild.': 'Use the theme button to switch between light and dark appearance.', '7. Gute Arbeitsweise bei Softwareprojekten': '7. Good practices for software projects', 'Arbeite möglichst mit einer separaten Projektkopie oder einem Versionsverwaltungssystem wie Git.': 'If possible, work with a separate project copy or a version control system such as Git.', 'Beginne jede neue Aufgabe mit einer Analyse und verlange einen konkreten Änderungsplan.': 'Start each new task with an analysis and request a concrete change plan.', 'Ändere nur die Dateien, die für den Auftrag notwendig sind.': 'Change only the files required for the task.', 'Bitte nach Änderungen um Syntaxprüfung und – wenn passend – gezielte Tests.': 'After changes, request a syntax check and, where appropriate, targeted tests.', 'Prüfe die Änderungen selbst und teste die Anwendung auf deinem Raspberry Pi.': 'Review the changes yourself and test the application on your Raspberry Pi.', 'Schalte den Schreibzugriff wieder aus, wenn du ihn nicht mehr benötigst.': 'Turn off write access again when you no longer need it.', '8. Wenn etwas nicht funktioniert': '8. If something does not work', 'Prüfe Mikrofonberechtigung, angeschlossenes Mikrofon, PyAudio und die optionale Installation von SpeechRecognition. Die Online-Erkennung benötigt Internetzugang.': 'Check microphone permissions, the connected microphone, PyAudio and the optional SpeechRecognition installation. Online recognition requires internet access.', 'Wähle den Projektordner erneut aus und kontrolliere, ob der Ordner noch existiert.': 'Select the project folder again and check whether it still exists.', 'Prüfe, ob der richtige Projektordner ausgewählt und der Lesezugriff eingeschaltet ist.': 'Check that the correct project folder is selected and read access is enabled.', 'Prüfe zusätzlich den Schreibzugriff. Erteile danach einen konkreten Auftrag für die geplante Änderung.': 'Also check write access. Then give a specific instruction for the planned change.', 'Wähle im Sicherungsmanager die passende Datei-Sicherung und kontrolliere den Inhalt vor der Bestätigung.': 'Select the appropriate file backup in the backup manager and check its contents before confirming.', 'Neue Dateien werden ab jetzt hier gespeichert:\n\n': 'New files will be saved here from now on:\n\n', '\n\nBereits erstellte Dateien bleiben an ihrem bisherigen Speicherort.': '\n\nPreviously created files remain in their current location.', 'MBROLA': 'MBROLA', ', direkt links neben der Versionsanzeige, erneut öffnen.': ', directly to the left of the version display.', 'in der linken Seitenleiste.': 'in the left sidebar.', 'Mit': 'With', 'Chat umbenennen': 'Rename chat', 'Neuer Name:': 'New name:', 'Datei speichern': 'Save file', 'Chats und ': ' chats and ', ' Gedächtniseinträge wurden exportiert.': ' knowledge entries were exported.', ' Gedächtniseinträge importiert.': ' knowledge entries imported.', ' Zeichen eingelesen': ' characters read', 'ERGEBNIS: UNTERSCHIEDE GEFUNDEN\n\n=== ÄNDERUNGEN ===\n': 'RESULT: DIFFERENCES FOUND\n\n=== CHANGES ===\n', '\n\n=== INHALT DER SICHERUNG ===\n': '\n\n=== BACKUP CONTENTS ===\n', '\n\n=== AKTUELLER ORIGINALINHALT ===\n': '\n\n=== CURRENT ORIGINAL CONTENTS ===\n', 'Sprache kann noch nicht gewechselt werden': 'Language cannot be changed yet', 'Bitte warte, bis die aktuelle Antwort eingetroffen ist, und ändere danach die Sprache.': 'Please wait until the current response has arrived, then change the language.', 'Suchen:': 'Search:', 'Ersetzen:': 'Replace:', 'Weiter': 'Find next', 'Ersetzen': 'Replace', 'Alle ersetzen': 'Replace all', 'Zeile': 'Line', 'Die Datei wurde außerhalb von LunaGPT geändert. Neu laden?': 'The file was changed outside LunaGPT. Reload it?', 'Datei extern geändert': 'File changed externally', 'Bildvorschau': 'Image preview', 'Bild kann nicht angezeigt werden.': 'Image cannot be displayed.', 'JSON-Vorschau': 'JSON preview', 'Keine Treffer gefunden.': 'No matches found.', 'Treffer ersetzt: ': 'Replacements made: ', 'Projektdatei-Editor': 'Project file editor', 'Datei ist geändert': 'File is modified', 'Datei ist gespeichert': 'File is saved', 'Aktuelle Datei: ': 'Current file: ', 'Wichtige Informationen automatisch im globalen Gedächtnis speichern': 'Automatically save important information to global memory', 'Im globalen Gedächtnis werden nur wichtige, längerfristig nützliche Projektinformationen und Arbeitspräferenzen gespeichert. Keine Zugangsdaten oder sensiblen Angaben.': 'Only important, useful long-term project information and work preferences are saved in global memory. No credentials or sensitive details.'}
+UI_TRANSLATIONS = {
+    'Bauen': 'Build', 'Starten': 'Run', 'Debuggen (GDB)': 'Debug (GDB)', 'Stoppen': 'Stop',
+    'Konsole / Programmausgabe': 'Console / Program output', 'Eingabe senden': 'Send input',
+    'Befehlseingabe für laufendes Programm': 'Input for running program',
+    'Build-Ausführung ist nicht freigegeben. Aktiviere die Build-Freigabe im Hauptfenster.': 'Build execution is not enabled. Enable build permission in the main window.',
+    'Bitte zuerst eine Python- oder C++-Datei öffnen.': 'Please open a Python or C++ file first.',
+    'Kein C++-Projekt geöffnet.': 'No C++ project is open.',
+    'C++-Programm wurde noch nicht gebaut. Bitte zuerst Bauen wählen.': 'C++ program has not been built yet. Please choose Build first.',
+'LunaGPT – Einstellungen': 'LunaGPT – Settings', 'sk-… (bleibt lokal auf diesem Rechner)': 'sk-… (stays on this computer)', 'Schlüssel anzeigen': 'Show key', 'Antworten automatisch vorlesen': 'Read answers aloud automatically', 'Sprachmodule neu erkennen': 'Detect voice modules again', 'OpenAI-API-Schlüssel': 'OpenAI API key', 'Der Schlüssel wird lokal mit Dateirechten 600 gespeichert.': 'The key is stored locally with file permissions 600.', 'Modell': 'Model', 'Stimme': 'Voice', 'Sprechtempo': 'Speaking rate', 'Tonhöhe': 'Pitch', 'Sprachlautstärke': 'Speech volume', 'Soundkarte für Luna': 'Audio output for Luna', '🔊 Testton / Stimme testen': '🔊 Test tone / voice', 'Wählt das ALSA-Ausgabegerät für Lunas Sprachausgabe.': "Selects the ALSA output device for Luna's speech.", 'Die Liste wird aus den installierten eSpeak-NG- und MBROLA-Stimmen ermittelt.': 'The list is populated from installed eSpeak NG and MBROLA voices.', 'Mikrofon für Spracheingabe': 'Microphone for voice input', 'Die Auswahl wird gespeichert. Der Spracheingabe-Knopf startet die Aufnahme direkt.': 'The selection is saved. The voice input button starts recording directly.', 'Speichern': 'Save', 'Abbrechen': 'Cancel', 'Sprachmodule': 'Voice modules', 'Erkennung abgeschlossen.  Stimmen gefunden. Nicht jede gelistete Stimme ist automatisch abspielbar; nutze zum Prüfen den Soundtest.': 'Detection complete. Found  voices. Not every listed voice is necessarily playable; use the sound test to check.', 'Teste Audio …': 'Testing audio …', 'Der Audiotest wurde erfolgreich abgespielt.': 'The audio test played successfully.', 'Soundtest': 'Sound test', 'Soundtest fehlgeschlagen': 'Sound test failed', 'Programm nicht gefunden: \n\nBitte installiere es mit: sudo apt install espeak-ng alsa-utils': 'Program not found:\n\nPlease install it with: sudo apt install espeak-ng alsa-utils', 'LunaGPT – Kostenlose Online-Bildgenerierung': 'LunaGPT – Free online image generation', 'Beschreibe das Bild, das kostenlos online erzeugt werden soll:': 'Describe the image to generate online for free:', 'Zum Beispiel: Ein rotes Haus auf einer grünen Wiese, sonniger Tag, digitale Malerei': 'For example: a red house on a green meadow, sunny day, digital painting', 'Bildgröße:': 'Image size:', 'AI Horde · anonym und kostenlos · 256 × 256 Pixel\nKein kostenpflichtiger Ersatzdienst. Bilder werden nicht automatisch gespeichert.': 'AI Horde · anonymous and free · 256 × 256 pixels\nNo paid replacement service. Images are not saved automatically.', 'Hier erscheint das erzeugte Bild.': 'The generated image will appear here.', 'Bereit · Verstrichene Zeit: 00:00': 'Ready · Elapsed time: 00:00', '🎨 Bild erzeugen': '🎨 Generate image', 'Bild speichern unter …': 'Save image as …', 'Schließen': 'Close', 'Rückgängig': 'Undo', 'Wiederholen': 'Redo', 'Ausschneiden': 'Cut', 'Kopieren': 'Copy', 'Einfügen': 'Paste', 'Alles auswählen': 'Select all', 'Löschen': 'Delete', 'AI Horde · anonym und kostenlos ·  ×  Pixel\nKein kostenpflichtiger Ersatzdienst. Bilder werden nicht automatisch gespeichert.': 'AI Horde · anonymous and free ·  ×  pixels\nNo paid replacement service. Images are not saved automatically.', 'Bild wird online erzeugt … · Verstrichene Zeit: : min': 'Generating image online … · Elapsed time: : min', 'Bildbeschreibung fehlt': 'Image description missing', 'Bitte gib zuerst eine Beschreibung ein.': 'Please enter a description first.', 'Bild wird online erzeugt … · Verstrichene Zeit: 00:00 min': 'Generating image online … · Elapsed time: 00:00 min', 'Bild wird erzeugt …': 'Generating image …', 'Die Bilderzeugung ist fehlgeschlagen.': 'Image generation failed.', 'Fehler beim Bildgenerator · Verstrichene Zeit: ': 'Image generator error · Elapsed time: ', 'Bildgenerierung fehlgeschlagen': 'Image generation failed', 'Das Bild konnte nicht angezeigt werden.': 'The image could not be displayed.', 'Fertig · Verstrichene Zeit: \nNicht dauerhaft gespeichert. Bei Bedarf auf ‚Bild speichern unter …‘ klicken.': 'Done · Elapsed time: \nNot saved permanently. Click ‘Save image as …’ if needed.', 'Bild wird noch erzeugt': 'Image is still being generated', 'Bitte warte, bis die laufende Bilderzeugung abgeschlossen ist.': 'Please wait until the current image generation has finished.', 'Bild manuell gespeichert: ': 'Image saved manually: ', 'Speichern fehlgeschlagen': 'Save failed', 'LunaGPT – lokaler Projektmanager': 'LunaGPT – Local project manager', 'Neue Datei': 'New file', 'Neuer Ordner': 'New folder', 'Im Dateimanager öffnen': 'Open in file manager', 'Datei auswählen, um sie anzuzeigen': 'Select a file to view it', 'Textdateien können hier angezeigt und bearbeitet werden.': 'Text files can be viewed and edited here.', 'Änderungen speichern': 'Save changes', 'Neu laden': 'Reload', 'Die Datei liegt außerhalb des ausgewählten Projektordners.': 'The file is outside the selected project folder.', 'Zugriff verweigert': 'Access denied', 'Datei zu groß': 'File too large', 'Dateien über 2 MB werden im Editor nicht geöffnet. Du kannst sie im Dateimanager öffnen.': 'Files larger than 2 MB are not opened in the editor. You can open them in the file manager.', 'Neue Dateien dürfen nur innerhalb des ausgewählten Projektordners erstellt werden.': 'New files can only be created inside the selected project folder.', 'Ungültiger Pfad': 'Invalid path', 'Datei konnte nicht erstellt werden': 'Could not create file', 'Bitte einen einfachen Ordnernamen ohne Pfadangaben verwenden.': 'Please use a simple folder name without path components.', 'Ungültiger Name': 'Invalid name', 'Ein Ordner oder eine Datei mit diesem Namen existiert bereits.': 'A folder or file with this name already exists.', 'Ordner vorhanden': 'Folder already exists', 'Ordner konnte nicht erstellt werden': 'Could not create folder', 'Gespeichert': 'Saved', 'LunaGPT – Sicherungsverwaltung': 'LunaGPT – Backup manager', 'Geschützte Projektsicherungen. Wähle links eine Sicherung aus, um Inhalt und Unterschiede zum aktuellen Stand zu sehen.': 'Protected project backups. Select a backup on the left to view its contents and differences from the current state.', 'Sicherung auswählen': 'Select a backup', 'Inhalt der Sicherung bzw. Vergleich erscheint hier.': 'Backup contents or comparison will appear here.', 'Aktualisieren': 'Refresh', 'Mit Original vergleichen': 'Compare with original', 'Wiederherstellen …': 'Restore …', 'Keine Sicherungen gefunden.': 'No backups found.', 'Sicherungen konnten nicht geladen werden': 'Could not load backups', '<b>Sicherung:</b> <br><b>Datei:</b> <br><b>Größe:</b>  Byte': '<b>Backup:</b> <br><b>File:</b> <br><b>Size:</b> bytes', 'Sicherung nicht lesbar': 'Backup cannot be read', '<b>Sicherung:</b> <br><b>Datei:</b> <br><b>Vergleich:</b> ': '<b>Backup:</b> <br><b>File:</b> <br><b>Comparison:</b> ', 'Vergleich fehlgeschlagen': 'Comparison failed', 'Aktiviere zuerst „KI darf Projektdateien ändern“.': 'First enable “AI may modify project files”.', 'Schreibzugriff fehlt': 'Write access not enabled', 'Wiederherstellung erfolgreich': 'Restore successful', 'Datei wiederhergestellt: \n\nQuelle: \nZusätzliche Sicherung des vorherigen Stands:\n\n\nDie Sicherheitskopie wurde vor dem Zurückspielen geprüft.': 'File restored: \n\nSource: \nAdditional backup of the previous state:\n\n\nThe backup was checked before restoration.', 'Wiederherstellung fehlgeschlagen': 'Restore failed', 'LunaGPT – dein KI-Client': 'LunaGPT – your AI client', '🐭 LunaGPT': '🐭 LunaGPT', '＋  Neuer Chat': '＋  New chat', '🗃  Archivierte Chats anzeigen': '🗃  Show archived chats', '💬  Neue Chats anzeigen': '💬  Show new chats', 'Mit ChatGPT anmelden': 'Sign in with ChatGPT', 'Mit deinem ChatGPT-Konto anmelden; Google kann im Browser ausgewählt werden.': 'Sign in with your ChatGPT account; Google can be selected in the browser.', '🌐  Globales Gedächtnis': '🌐  Global memory', '📤  Chats exportieren': '📤  Export chats', '📂  Arbeitsbereich öffnen': '📂  Open workspace', 'Aktueller Speicherort für KI-erstellte Dateien': 'Current location for AI-generated files', 'Speicherort ändern …': 'Change location …', '📁  Projektordner wählen …': '📁  Choose project folder …', '🗂  Projektmanager öffnen': '🗂  Open project manager', '🛡  Sicherungen verwalten': '🛡  Manage backups', 'KI darf Projektdateien lesen': 'AI may read project files', 'KI darf Projektdateien ändern': 'AI may modify project files', 'Nur aktivieren, wenn Luna auf ausdrücklichen Auftrag Dateien im ausgewählten Projekt ändern darf. Vorhandene Dateien werden gesichert.': 'Enable only if Luna is allowed to modify files in the selected project on your explicit instruction. Existing files are backed up.', 'KI darf Build-Befehle ausführen': 'AI may run build commands', 'Erlaubt Luna ausdrücklich angeforderte Buildskripte sowie begrenzte Paket- und ZIP-Prüfungen im aktuell ausgewählten Projektordner. Nur für vertrauenswürdige Projekte aktivieren.': 'Allows Luna to run explicitly requested build scripts and limited package and ZIP checks in the currently selected project folder. Enable only for trusted projects.', '📥  Chats importieren': '📥  Import chats', '☀  Helles Design': '☀  Light theme', '⚙  Einstellungen': '⚙  Settings', 'Bereit': 'Ready', 'Wie kann ich helfen?': 'How can I help?', 'Modus': 'Mode', 'Websuche': 'Web search', 'Nutzt die Websuche der OpenAI API; kann zusätzliche API-Kosten verursachen.': 'Uses OpenAI API web search; may incur additional API costs.', '❔': '❔', 'Hilfe & Schritt-für-Schritt-Anleitung': 'Help & step-by-step guide', 'Installierte Programmversion': 'Installed application version', '🐭  Luna überlegt': '🐭  Luna is thinking', 'Keine Anhänge': 'No attachments', 'Schreibe Luna eine Nachricht …  (Enter = Senden, Umschalt+Enter = neue Zeile)': 'Write a message to Luna …  (Enter = send, Shift+Enter = new line)', '＋ Datei/Bild': '＋ File/image', '🎙 Spracheingabe': '🎙 Voice input', '🔊 Vorlesen': '🔊 Read aloud', '⏹ Vorlesen beenden': '⏹ Stop reading', 'Senden  ➤': 'Send  ➤', 'LunaGPT – Hilfe & Schritt-für-Schritt-Anleitung': 'LunaGPT – Help & step-by-step guide', 'Speicherort geändert': 'Location changed', 'Kein Projektordner ausgewählt': 'No project folder selected', 'Bitte zuerst einen gültigen Projektordner auswählen.': 'Please select a valid project folder first.', 'Kein Projektordner': 'No project folder', 'Lesezugriff fehlt': 'Read access not enabled', 'Globales Gedächtnis': 'Global memory', 'Speichere Hinweise, Projektnotizen oder bevorzugte Anweisungen. Passende Einträge werden bei jeder Anfrage als Kontext mitgesendet.': 'Save hints, project notes or preferred instructions. Relevant entries are included as context with every request.', 'Ausgewählten löschen': 'Delete selected', '＋ Eintrag hinzufügen': '＋ Add entry', '✓ ChatGPT abmelden': '✓ Sign out of ChatGPT', 'Lokale ChatGPT-Anmeldedaten entfernen': 'Remove local ChatGPT sign-in data', 'ChatGPT angemeldet: ': 'ChatGPT signed in: ', 'Konto verbunden': 'Account connected', 'API-Schlüssel eingerichtet': 'API key configured', 'Nicht verbunden – anmelden oder API-Schlüssel eintragen': 'Not connected – sign in or enter an API key', 'ChatGPT abmelden': 'Sign out of ChatGPT', 'Möchtest du die ChatGPT-Anmeldedaten auf diesem Rechner entfernen?': 'Do you want to remove the ChatGPT sign-in data from this computer?', 'Abgemeldet': 'Signed out', 'Die lokal gespeicherten ChatGPT-Tokens wurden entfernt. Die Client-Registrierung bleibt für eine spätere Anmeldung erhalten.': 'The locally stored ChatGPT tokens were removed. The client registration remains available for a future sign-in.', 'Browser-Anmeldung wird vorbereitet …': 'Preparing browser sign-in …', 'ChatGPT verbunden': 'ChatGPT connected', 'LunaGPT ist mit  verbunden. Unterstützte Anfragen verwenden jetzt den autorisierten ChatGPT-Tarif.': 'LunaGPT is connected to . Supported requests now use the authorized ChatGPT plan.', 'ChatGPT-Anmeldung fehlgeschlagen': 'ChatGPT sign-in failed', 'Export abgeschlossen': 'Export complete', 'Chats und  Gedächtniseinträge wurden exportiert.': ' chats and  knowledge entries were exported.', 'Export fehlgeschlagen': 'Export failed', 'Import abgeschlossen': 'Import complete', 'Chats und  Gedächtniseinträge importiert.': ' chats and  knowledge entries imported.', 'Import fehlgeschlagen': 'Import failed', 'Die Datei konnte nicht importiert werden.\n\n': 'The file could not be imported.\n\n', 'Umbenennen': 'Rename', 'Chat endgültig löschen': 'Permanently delete chat', 'Markierten Text kopieren': 'Copy selected text', 'Alles markieren': 'Select all text', 'Datei nicht lesbar': 'File cannot be read', 'Datei(en) angehängt': 'file(s) attached', 'Dateien oder Bilder anhängen': 'Attach files or images', 'Öffnen': 'Open', 'Bitte erst einen neuen Chat öffnen.': 'Please open a new chat first.', 'Kein Chat': 'No chat', 'Luna denkt …': 'Luna is thinking …', 'Antwort erhalten': 'Response received', 'Antwort im ursprünglichen Chat gespeichert': 'Response saved in the original chat', 'Fehler': 'Error', 'OpenAI-Verbindungsfehler': 'OpenAI connection error', 'Prüfe Schlüssel, Modellzugriff, API-Guthaben und Internetverbindung.': 'Check your key, model access, API balance and internet connection.', 'Sprachausgabe beendet': 'Speech playback stopped', 'Es gibt noch keine Antwort zum Vorlesen.': 'There is no answer to read aloud yet.', 'Vorlesen': 'Read aloud', 'Spracheingabe: Mikrofon wird vorbereitet …': 'Voice input: preparing microphone …', 'Spracheingabe fertig': 'Voice input complete', 'Für die Spracheingabe fehlt SpeechRecognition.\n\nInstallation für den System-Python unter Debian:\npython3 -m pip install --user --break-system-packages SpeechRecognition\nsudo apt install python3-pyaudio alsa-utils': 'SpeechRecognition is missing for voice input.\n\nInstall for the system Python on Debian:\npython3 -m pip install --user --break-system-packages SpeechRecognition\nsudo apt install python3-pyaudio alsa-utils', 'Spracheingabe': 'Voice input', 'Mikrofon nicht verfügbar': 'Microphone unavailable', 'Das gespeicherte Mikrofon ist nicht mehr vorhanden.': 'The saved microphone is no longer available.', 'Innerhalb von 8 Sekunden wurde keine Sprache erkannt. Bitte erneut versuchen.': 'No speech was detected within 8 seconds. Please try again.', 'Die Aufnahme war möglich, aber der Online-Dienst konnte die Sprache nicht erkennen. Bitte deutlicher oder näher am Mikrofon sprechen.': 'Recording worked, but the online service could not recognize the speech. Please speak more clearly or closer to the microphone.', 'Spracheingabe – Internetdienst nicht erreichbar': 'Voice input – online service unavailable', 'Google Speech Recognition konnte nicht erreicht werden. Prüfe die Internetverbindung.': 'Google Speech Recognition could not be reached. Check your internet connection.', 'Spracheingabe fehlgeschlagen': 'Voice input failed', 'Neuer Chat': 'New chat', 'Allgemein': 'General', 'Programmiermodus': 'Coding mode', 'Deutsch': 'German', 'Englisch': 'English', 'Sprache der Benutzeroberfläche': 'Interface language', 'Ja': 'Yes', 'Nein': 'No', 'Übernehmen': 'Apply', 'Verwerfen': 'Discard', 'Erneut versuchen': 'Retry', 'Datei': 'File', 'Chat': 'Chat', 'Du': 'You', 'Aktueller Chat:': 'Current chat:', 'Projektordner: ': 'Project folder: ', 'Sicherung:': 'Backup:', 'Datei:': 'File:', 'Größe:': 'Size:', 'Wissen hinzufügen': 'Add knowledge', 'Titel:': 'Title:', 'Notiz / Wissen:': 'Note / knowledge:', 'Mikrofon': 'Microphone', 'Willkommen bei LunaGPT': 'Welcome to LunaGPT', 'Diese Anleitung führt dich vom ersten Chat bis zur Arbeit an einem eigenen Softwareprojekt. Du kannst sie jederzeit über': 'This guide takes you from your first chat to working on your own software project. You can reopen it at any time using', '❔-Schaltfläche oben rechts': 'the ❔ button in the upper right', '1. LunaGPT zum ersten Mal starten': '1. Starting LunaGPT for the first time', 'Starte LunaGPT über das Anwendungsmenü oder mit dem Terminalbefehl': 'Start LunaGPT from the application menu or with the terminal command', 'Klicke links auf': 'Click on the left', 'Der Browser öffnet den Anmeldevorgang. Melde dich dort mit deinem Konto an und kehre anschließend zu LunaGPT zurück.': 'The browser will open the sign-in process. Sign in with your account and then return to LunaGPT.', 'Wenn LunaGPT nach einem API-Schlüssel oder einer weiteren Einrichtung fragt, folge den Hinweisen im jeweiligen Dialog. ChatGPT-Anmeldung und API-Zugang sind unterschiedliche Zugangswege.': 'If LunaGPT asks for an API key or additional setup, follow the instructions in the dialog. ChatGPT sign-in and API access are two different access methods.', 'Über': 'Using', 'kannst du die verfügbaren Programmoptionen anpassen.': 'to adjust the available application options.', '2. Einen normalen Chat führen': '2. Having a regular chat', 'Schreibe deine Frage unten in das Eingabefeld. Mit': 'Write your question in the input field below. Use', 'sendest du die Nachricht; mit': 'to send the message; use', 'fügst du einen Zeilenumbruch ein.': 'to insert a line break.', 'kannst du Dateien oder Bilder an eine Nachricht anhängen. Prüfe vor dem Senden, ob der richtige Anhang angezeigt wird.': 'to attach files or images to a message. Check that the correct attachment is shown before sending.', 'kannst du – sofern dein verwendeter Zugang dies unterstützt – eine Websuche für die Anfrage aktivieren.': 'to enable web search for the request, if your access method supports it.', 'eignet sich für Alltagsfragen.': 'is suitable for everyday questions.', 'ist für Programmieraufgaben und technische Analysen gedacht.': 'is intended for programming tasks and technical analysis.', 'kannst du eine Nachricht diktieren. Dafür müssen Mikrofon und optionale Spracherkennungs-Abhängigkeiten eingerichtet sein.': 'lets you dictate a message. A microphone and the optional speech-recognition dependencies must be set up.', 'liest die letzte Antwort vor;': 'reads the last answer aloud;', 'stoppt die Wiedergabe.': 'stops playback.', 'Deine Chats erscheinen links in der Chatliste. Über das Kontextmenü eines Chats stehen weitere Chat-Aktionen zur Verfügung. Archivierte Chats erreichst du über': 'Your chats appear in the list on the left. The chat context menu provides additional actions. You can access archived chats using', 'Chats lassen sich über das Menü „Datei“ importieren und exportieren.': 'You can also export and import chats using the buttons.', '3. Den Arbeitsbereich für erzeugte Dateien verstehen': '3. Understanding the workspace for generated files', 'Der Arbeitsbereich ist der Speicherort für Dateien, die LunaGPT im Rahmen deiner Chats erstellt.': 'The workspace is where LunaGPT stores files it creates during your chats.', 'öffnest du den Ordner des aktuellen Chats im Dateimanager.': "opens the current chat's folder in the file manager.", 'kannst du den übergeordneten Speicherort anpassen.': 'lets you change the parent location.', 'Jeder Chat erhält einen eigenen Unterordner. Bereits erstellte Dateien werden beim Ändern des Speicherorts nicht automatisch verschoben.': 'Each chat gets its own subfolder. Existing files are not moved automatically when you change the location.', 'Hinweis:': 'Note:', 'Der Arbeitsbereich für neu erzeugte Chat-Dateien ist nicht dasselbe wie ein ausgewählter Projektordner. Für die Analyse und Bearbeitung eines bestehenden Softwareprojekts verwendest du die folgenden Schritte.': 'The workspace for newly generated chat files is not the same as a selected project folder. Use the following steps to analyze and edit an existing software project.', '4. Ein eigenes Projekt beginnen – Schritt für Schritt': '4. Starting your own project – step by step', 'Projekt auswählen:': 'Select a project:', 'Wähle zuerst den Projektordner aus, in dem sich die Dateien befinden.': 'First select the project folder containing the files.', 'Freigaben einschalten:': 'Enable permissions:', 'Änderung ausdrücklich beauftragen:': 'Explicitly request the change:', 'Ergebnis kontrollieren:': 'Review the result:', 'Build-Befehle im ausgewählten Projektordner ausführen': 'Run build commands in the selected project folder', 'Sicherungen verwalten und Änderungen zurücknehmen': 'Manage backups and revert changes', 'Projektmanager, globales Gedächtnis und Chats': 'Project manager, global memory and chats', 'Gute Arbeitsweise bei Softwareprojekten': 'Good practices for software projects', 'Wenn etwas nicht funktioniert': 'If something does not work', 'Keine Antwort:': 'No response:', 'Prüfe die Anmeldung bzw. den verwendeten Zugang und die Internetverbindung. Lies die angezeigte Fehlermeldung vollständig.': 'Check your sign-in or access method and your internet connection. Read the displayed error message in full.', 'Spracheingabe funktioniert nicht:': 'Voice input does not work:', 'Projekt wird nicht angezeigt:': 'Project is not displayed:', 'KI kann Dateien nicht lesen:': 'AI cannot read files:', 'KI kann Dateien nicht ändern:': 'AI cannot modify files:', 'Wiederherstellung:': 'Restore:', 'Grundregel:': 'Basic rule:', 'Erst auswählen, dann lesen lassen, Analyse prüfen, Änderung planen, gezielt freigeben und anschließend kontrollieren. So behältst du jederzeit die Übersicht über dein Projekt.': 'Select first, then allow reading, review the analysis, plan the change, grant permission deliberately, and check the result. This keeps you in control of your project.', 'Datei ändern': 'Modify file', 'Ungespeicherte Änderungen': 'Unsaved changes', 'Die aktuelle Datei wurde geändert. Änderungen verwerfen und eine andere Datei öffnen?': 'The current file has been modified. Discard changes and open another file?', 'Extern öffnen': 'Open externally', 'Möchtest du diese Datei mit der zugeordneten Anwendung öffnen?': 'Do you want to open this file with its associated application?', 'Keine Textdatei': 'Not a text file', 'Diese Datei kann nicht als UTF-8-Text angezeigt werden. Mit der zugeordneten Anwendung öffnen?': 'This file cannot be displayed as UTF-8 text. Open it with its associated application?', 'Neuen Ordner erstellen': 'Create new folder', 'Ordnername:': 'Folder name:', 'Datei gespeichert:': 'File saved:', 'Identisch mit dem aktuellen Original.': 'Identical to the current original.', 'Unterschiede gefunden.': 'Differences found.', 'ERGEBNIS: IDENTISCH': 'RESULT: IDENTICAL', 'Sicherung und Original haben denselben Inhalt.': 'The backup and original have the same contents.', 'ERGEBNIS: UNTERSCHIEDE GEFUNDEN': 'RESULT: DIFFERENCES FOUND', '=== ÄNDERUNGEN ===': '=== CHANGES ===', '=== INHALT DER SICHERUNG ===': '=== BACKUP CONTENTS ===', '=== AKTUELLER ORIGINALINHALT ===': '=== CURRENT ORIGINAL CONTENTS ===', 'Die Datei „': 'The file “', ' wird auf den Stand der Sicherung\n': ' will be restored to the backup state\n', ' zurückgesetzt.\n\n': '\n\n', 'Der aktuelle Stand wird vorher zusätzlich gesichert und überprüft.\n': 'The current state will also be backed up and checked first.\n', 'Möchtest du fortfahren?': 'Do you want to continue?', 'Chat archivieren?': 'Archive chat?', 'Soll der aktuelle Chat „': 'Should the current chat “', '“ beim Beenden archiviert werden?': '” be archived when exiting?', 'Ja = archivieren und beenden\nNein = ohne Archivierung beenden\nAbbrechen = weiterarbeiten': 'Yes = archive and exit\nNo = exit without archiving\nCancel = continue working', 'Unterstützte Dateien': 'Supported files', 'Alle Dateien': 'All files', 'Aktueller Chat:\n': 'Current chat:\n', 'API-Schlüssel': 'API key', 'OK': 'OK', 'Deutsch – eSpeak NG Standard': 'German – eSpeak NG standard', ' ×  Pixel': ' ×  pixels', 'Bild speichern': 'Save image', 'Neue Projektdatei erstellen': 'Create new project file', 'Ein Bild kostenlos und anonym online mit AI Horde erzeugen.': 'Generate an image online for free and anonymously with AI Horde.', 'Speicherort für erstellte Dateien auswählen': 'Choose storage location for generated files', 'Projekt: ': 'Project: ', 'Öffnet den Projektmanager für ': 'Opens the project manager for ', 'Lokalen Projektordner auswählen': 'Choose local project folder', 'Aktiviere zuerst „KI darf Projektdateien lesen“.': 'First enable “AI may read project files”.', '🌙  Dunkles Design': '🌙  Dark theme', 'LunaGPT': 'LunaGPT', 'Chats exportieren': 'Export chats', 'LunaGPT-Export importieren': 'Import LunaGPT export', '🗃  Aktive Chats anzeigen': '🗃  Show active chats', 'Archivieren': 'Archive', 'Aus Archiv holen': 'Unarchive', 'Anhänge: ': 'Attachments: ', 'Alle Dateien (*)': 'All files (*)', 'Unterstützte Dateien (*.png *.jpg *.jpeg *.webp *.gif *.pdf *.txt *.md *.py *.js *.json *.html *.css *.xml *.csv *.ini *.log *.sh *.c *.cpp *.h *.yml *.yaml *.toml *.sql *.zip *.deb)': 'Supported files (*.png *.jpg *.jpeg *.webp *.gif *.pdf *.txt *.md *.py *.js *.json *.html *.css *.xml *.csv *.ini *.log *.sh *.c *.cpp *.h *.yml *.yaml *.toml *.sql *.zip *.deb)', 'lunagpt': 'lunagpt', '„Mit ChatGPT anmelden“': '“Sign in with ChatGPT”', '„Einstellungen“': '“Settings”', '„＋ Neuer Chat“': '“＋ New chat”', 'Enter': 'Enter', 'Umschalt+Enter': 'Shift+Enter', 'Vorlesen beenden': 'Stop reading', '„Archivierte Chats anzeigen“': '“Show archived chats”', '„Arbeitsbereich öffnen“': '“Open workspace”', '„Speicherort ändern …“': '“Change location …”', 'Projektordner vorbereiten:': 'Prepare a project folder:', 'Lege im Dateimanager einen Ordner für dein Projekt an oder verwende einen bereits vorhandenen Ordner. Wähle möglichst den obersten Ordner, der zum Projekt gehört.': 'Create a folder for your project in the file manager or use an existing folder. If possible, select the top-level folder belonging to the project.', 'Klicke in LunaGPT links auf': 'In LunaGPT, click on the left', '„📁 Projektordner wählen …“': '“📁 Choose project folder …”', 'und wähle genau diesen Ordner. Danach wird der ausgewählte Pfad links angezeigt.': 'and select that folder. The selected path will then be displayed on the left.', 'Projektmanager öffnen:': 'Open the project manager:', 'Klicke auf': 'Click', '„🗂 Projektmanager öffnen“': '“🗂 Open project manager”', '. Dort kannst du die Projektdateien und Ordner ansehen und – je nach Funktion – Dateien im Editor öffnen.': '. There you can view project files and folders and, depending on the function, open files in the editor.', 'Lesezugriff bewusst freigeben:': 'Grant read access deliberately:', 'Aktiviere': 'Enable', '„KI darf Projektdateien lesen“': '“AI may read project files”', ', wenn Luna die Projektdateien untersuchen soll. Ohne diese Freigabe soll Luna keine Projektdateien lesen.': ', if Luna is to inspect project files. Without this permission, Luna must not read project files.', 'Mit einer Analyse beginnen:': 'Start with an analysis:', 'Starte einen neuen Chat und schreibe zum Beispiel:': 'Start a new chat and write, for example:', '„Analysiere bitte zuerst die Struktur dieses Projekts. Ändere noch keine Dateien. Nenne mir die wichtigsten Dateien, mögliche Probleme und einen sinnvollen nächsten Schritt.“': '“Please analyze the structure of this project first. Do not change any files yet. Tell me the most important files, possible problems and a sensible next step.”', 'Analyse abwarten:': 'Wait for the analysis:', 'Luna kann zunächst die Projektstruktur und Python-Dateien untersuchen und eine Syntaxprüfung durchführen. Eine solche statische Prüfung führt den Programmcode nicht aus und ersetzt keinen Praxistest.': 'Luna can first inspect the project structure and Python files and perform a syntax check. Such a static check does not execute the program code and does not replace a practical test.', 'Änderungsplan anfordern:': 'Request a change plan:', 'Bitte Luna, vor einer Änderung genau aufzulisten, welche Dateien sie ändern möchte, was geändert werden soll und welche Risiken bestehen.': 'Ask Luna to list exactly which files it wants to change, what should be changed and what risks are involved before making any changes.', 'Schreibzugriff nur bei Bedarf aktivieren:': 'Enable write access only when needed:', 'Wenn du den vorgeschlagenen Plan geprüft hast und Änderungen möchtest, aktiviere': 'After reviewing the proposed plan, if you want the changes made, enable', '„KI darf Projektdateien ändern“': '“AI may modify project files”', '. Diese Freigabe erweitert den Zugriff. Aktiviere sie nur für ein Projekt, dem du vertraust.': '. This permission expands access. Enable it only for a project you trust.', 'Schreibe klar, welche geplanten Änderungen Luna durchführen darf. Die allgemeine Freigabe des Schreibzugriffs ist noch kein Auftrag, beliebige Änderungen vorzunehmen.': 'Clearly state which planned changes Luna is allowed to make. General write permission is not an instruction to make arbitrary changes.', 'Lass Luna anschließend die geänderten Dateien und die durchgeführten Prüfungen nennen. Teste die Anwendung selbst auf deinem System.': 'Then ask Luna to list the changed files and checks performed. Test the application yourself on your system.', '5. Build-Befehle im ausgewählten Projektordner ausführen': '5. Run build commands in the selected project folder', 'Wähle zuerst links den Projektordner aus, in dem das Build- oder Prüfsystem liegt.': 'First select the project folder on the left that contains the build or test system.', 'Aktiviere „KI darf Projektdateien lesen“ und „KI darf Projektdateien ändern“. Aktiviere zusätzlich die separate Option': 'Enable “AI may read project files” and “AI may modify project files”. Also enable the separate option', '„KI darf Build-Befehle ausführen“': '“AI may run build commands”', '. Diese Build-Freigabe ist standardmäßig ausgeschaltet und wird beim Wechsel des Projektordners zurückgesetzt.': '. This build permission is disabled by default and is reset when you change the project folder.', 'Build ausdrücklich beauftragen:': 'Explicitly request the build:', 'Bitte LunaGPT ausdrücklich, das vorhandene Build- oder Prüfskript auszuführen. Die eingeschaltete Freigabe allein startet keinen Befehl.': 'Explicitly ask LunaGPT to run the existing build or test script. Enabling the permission alone does not start a command.', 'Ergebnis prüfen:': 'Check the result:', 'LunaGPT zeigt die begrenzte Befehlsausgabe an. Lass dir anschließend nennen, welche Dateien erzeugt wurden und ob ZIP-/DEB-Prüfungen erfolgreich waren.': 'LunaGPT displays the limited command output. Then ask which files were created and whether ZIP/DEB checks succeeded.', 'Sicherheit:': 'Security:', 'Buildskripte sind ausführbarer Projektcode und können selbst weitere Aktionen auslösen. Aktiviere die Freigabe nur für vertrauenswürdige Projekte. Befehle laufen ohne': 'Build scripts are executable project code and can trigger further actions. Enable this permission only for trusted projects. Commands run without', ', ohne Shell-Verkettungen und mit Zeitlimit. Unterstützt werden freigegebene Skripte': ', without shell chaining and with a time limit. Supported approved scripts include', 'sowie begrenzte Python-, dpkg-deb- und ZIP-Prüfungen. Die Funktion ist keine vollständige Betriebssystem-Sandbox.': 'as well as limited Python, dpkg-deb and ZIP checks. This feature is not a full operating-system sandbox.', '5. Sicherungen verwalten und Änderungen zurücknehmen': '5. Manage backups and revert changes', 'Vorhandene Dateien werden bei unterstützten Schreibvorgängen vor dem Überschreiben im Projektordner unter': 'For supported write operations, existing files are backed up in the project folder under', 'gesichert.': 'before being overwritten.', '„🛡 Sicherungen verwalten“': '“🛡 Manage backups”', ', um vorhandene Sicherungen des ausgewählten Projekts anzusehen.': ', to view existing backups for the selected project.', 'Wähle eine Sicherung aus. Du kannst den Inhalt ansehen und – sofern verfügbar – mit dem aktuellen Dateistand vergleichen.': 'Select a backup. You can view its contents and, if available, compare it with the current file.', 'Wenn du eine Sicherung zurückspielen möchtest, prüfe zuerst Datum und Inhalt sorgfältig und bestätige die Wiederherstellung im Dialog.': 'If you want to restore a backup, carefully check its date and contents first, then confirm the restoration in the dialog.', 'Vor einer Wiederherstellung wird der aktuelle Dateistand ebenfalls gesichert. So bleibt auch der Zustand vor dem Zurücksetzen erhalten.': 'Before restoring, the current file is also backed up. This preserves the state from before the rollback.', 'Wichtig:': 'Important:', 'Sicherungen sind kein Ersatz für ein zusätzliches Backup des gesamten Projekts. Lege bei wichtigen Projekten regelmäßig eine Kopie auf einem zweiten Datenträger oder in deinem eigenen Backup-System an.': 'Backups are not a substitute for an additional backup of the entire project. For important projects, regularly keep a copy on a second drive or in your own backup system.', '6. Projektmanager, globales Gedächtnis und Chats': '6. Project manager, global memory and chats', 'Projektmanager:': 'Project manager:', 'Zum Durchsehen und Bearbeiten von Dateien im ausgewählten lokalen Projektordner.': 'For viewing and editing files in the selected local project folder.', 'Sicherungen verwalten:': 'Manage backups:', 'Zum Prüfen, Vergleichen und Wiederherstellen unterstützter Dateisicherungen.': 'For checking, comparing and restoring supported file backups.', 'Globales Gedächtnis:': 'Global memory:', 'Zum Verwalten dauerhafter Erinnerungen, die LunaGPT chatübergreifend automatisch speichern und bei passenden Anfragen berücksichtigen kann. Diese Einträge bleiben auch beim Löschen einzelner Chats erhalten.': 'For managing lasting memories that LunaGPT can save automatically across chats and use in relevant requests. These entries remain even when individual chats are deleted.', 'Chats exportieren/importieren:': 'Export/import chats:', 'Zum Sichern oder Übertragen von Chatverläufen. Importiere nur Dateien aus vertrauenswürdigen Quellen.': 'For backing up or transferring chat histories. Only import files from trusted sources.', 'Design:': 'Theme:', 'Über die Design-Schaltfläche wechselst du zwischen hellem und dunklem Erscheinungsbild.': 'Use the theme button to switch between light and dark appearance.', '7. Gute Arbeitsweise bei Softwareprojekten': '7. Good practices for software projects', 'Arbeite möglichst mit einer separaten Projektkopie oder einem Versionsverwaltungssystem wie Git.': 'If possible, work with a separate project copy or a version control system such as Git.', 'Beginne jede neue Aufgabe mit einer Analyse und verlange einen konkreten Änderungsplan.': 'Start each new task with an analysis and request a concrete change plan.', 'Ändere nur die Dateien, die für den Auftrag notwendig sind.': 'Change only the files required for the task.', 'Bitte nach Änderungen um Syntaxprüfung und – wenn passend – gezielte Tests.': 'After changes, request a syntax check and, where appropriate, targeted tests.', 'Prüfe die Änderungen selbst und teste die Anwendung auf deinem Raspberry Pi.': 'Review the changes yourself and test the application on your Raspberry Pi.', 'Schalte den Schreibzugriff wieder aus, wenn du ihn nicht mehr benötigst.': 'Turn off write access again when you no longer need it.', '8. Wenn etwas nicht funktioniert': '8. If something does not work', 'Prüfe Mikrofonberechtigung, angeschlossenes Mikrofon, PyAudio und die optionale Installation von SpeechRecognition. Die Online-Erkennung benötigt Internetzugang.': 'Check microphone permissions, the connected microphone, PyAudio and the optional SpeechRecognition installation. Online recognition requires internet access.', 'Wähle den Projektordner erneut aus und kontrolliere, ob der Ordner noch existiert.': 'Select the project folder again and check whether it still exists.', 'Prüfe, ob der richtige Projektordner ausgewählt und der Lesezugriff eingeschaltet ist.': 'Check that the correct project folder is selected and read access is enabled.', 'Prüfe zusätzlich den Schreibzugriff. Erteile danach einen konkreten Auftrag für die geplante Änderung.': 'Also check write access. Then give a specific instruction for the planned change.', 'Wähle im Sicherungsmanager die passende Datei-Sicherung und kontrolliere den Inhalt vor der Bestätigung.': 'Select the appropriate file backup in the backup manager and check its contents before confirming.', 'Neue Dateien werden ab jetzt hier gespeichert:\n\n': 'New files will be saved here from now on:\n\n', '\n\nBereits erstellte Dateien bleiben an ihrem bisherigen Speicherort.': '\n\nPreviously created files remain in their current location.', 'MBROLA': 'MBROLA', ', direkt links neben der Versionsanzeige, erneut öffnen.': ', directly to the left of the version display.', 'in der linken Seitenleiste.': 'in the left sidebar.', 'Mit': 'With', 'Chat umbenennen': 'Rename chat', 'Neuer Name:': 'New name:', 'Datei speichern': 'Save file', 'Chats und ': ' chats and ', ' Gedächtniseinträge wurden exportiert.': ' knowledge entries were exported.', ' Gedächtniseinträge importiert.': ' knowledge entries imported.', ' Zeichen eingelesen': ' characters read', 'ERGEBNIS: UNTERSCHIEDE GEFUNDEN\n\n=== ÄNDERUNGEN ===\n': 'RESULT: DIFFERENCES FOUND\n\n=== CHANGES ===\n', '\n\n=== INHALT DER SICHERUNG ===\n': '\n\n=== BACKUP CONTENTS ===\n', '\n\n=== AKTUELLER ORIGINALINHALT ===\n': '\n\n=== CURRENT ORIGINAL CONTENTS ===\n', 'Sprache kann noch nicht gewechselt werden': 'Language cannot be changed yet', 'Bitte warte, bis die aktuelle Antwort eingetroffen ist, und ändere danach die Sprache.': 'Please wait until the current response has arrived, then change the language.', 'Suchen:': 'Search:', 'Ersetzen:': 'Replace:', 'Weiter': 'Find next', 'Ersetzen': 'Replace', 'Alle ersetzen': 'Replace all', 'Zeile': 'Line', 'Die Datei wurde außerhalb von LunaGPT geändert. Neu laden?': 'The file was changed outside LunaGPT. Reload it?', 'Datei extern geändert': 'File changed externally', 'Bildvorschau': 'Image preview', 'Bild kann nicht angezeigt werden.': 'Image cannot be displayed.', 'JSON-Vorschau': 'JSON preview', 'Keine Treffer gefunden.': 'No matches found.', 'Treffer ersetzt: ': 'Replacements made: ', 'Projektdatei-Editor': 'Project file editor', 'Datei ist geändert': 'File is modified', 'Datei ist gespeichert': 'File is saved', 'Aktuelle Datei: ': 'Current file: ', 'Wichtige Informationen automatisch im globalen Gedächtnis speichern': 'Automatically save important information to global memory', 'Im globalen Gedächtnis werden nur wichtige, längerfristig nützliche Projektinformationen und Arbeitspräferenzen gespeichert. Keine Zugangsdaten oder sensiblen Angaben.': 'Only important, useful long-term project information and work preferences are saved in global memory. No credentials or sensitive details.'}
 UI_TRANSLATIONS.update({
+    "Build-Typ:": "Build type:", "C++-Standard:": "C++ standard:",
+    "C++-Bibliotheken verwalten …": "Manage C++ libraries …",
+    "Keine pkg-config-Bibliotheken ausgewählt": "No pkg-config libraries selected",
+    "C++-Bibliotheken verwalten": "Manage C++ libraries",
+    "Installierte pkg-config-Pakete auswählen. Die Auswahl wird beim direkten g++-Build und optional auch bei CMake eingebunden.": "Select installed pkg-config packages. The selection is used for direct g++ builds.",
+    "Bibliothek suchen …": "Search libraries …", "pkg-config fehlt": "pkg-config is missing",
+    "Installiere pkg-config, um installierte C++-Bibliotheken zu erkennen.": "Install pkg-config to detect installed C++ libraries.",
+    "Bibliotheken nicht lesbar": "Could not read libraries", "Bibliotheksauflösung fehlgeschlagen": "Library resolution failed",
+    "Aufrufstapel": "Call stack", "Überwachen": "Watch", "Überwachung löschen": "Clear watches",
+    "Speicher prüfen (16 Byte)": "Examine memory (16 bytes)", "CPU-Register anzeigen": "Show CPU registers",
+    "Speicheradresse fehlt": "Memory address missing", "Gib im Ausdrucksfeld eine Zeigervariable oder Speicheradresse ein.": "Enter a pointer variable or memory address in the expression field.",
+    "Variable / Ausdruck": "Variable / expression", "Wert": "Value",
+    "Variablen": "Variables", "Speicher / Register": "Memory / registers",
+    "Speicherauszüge und CPU-Register erscheinen hier.": "Memory dumps and CPU registers appear here.",
+    "Hier erscheinen erkannte Variablen, Funktionsargumente und überwachte Ausdrücke. Vollständige GDB-Ausgabe steht in der Konsole.": "Detected variables, function arguments and watched expressions appear here. Full GDB output is in the console.",
+    "CMake-Ziel:": "CMake target:",
+    "Alle Ziele": "All targets",
+    "Programmargumente:": "Program arguments:",
+    "z. B. --input datei.txt": "e.g. --input file.txt",
+    "Haltepunkt hier": "Breakpoint here",
+    "Fortsetzen": "Continue",
+    "Einzelschritt": "Step into",
+    "Nächste Zeile": "Next line",
+    "Lokale Variablen": "Local variables",
+    "Ausdruck prüfen": "Evaluate expression",
+    "Variablenname oder Ausdruck": "Variable name or expression",
+    "Debugger nicht aktiv": "Debugger is not active",
+    "Bitte zuerst Debuggen (GDB) starten.": "Start Debug (GDB) first.",
+    "Kein Haltepunkt": "No breakpoint",
+    "Öffne eine C++-Datei und starte den GDB-Debugger.": "Open a C++ file and start the GDB debugger.",
+    "Ungültiger Ausdruck": "Invalid expression",
+    "Bitte einen einfachen Variablennamen oder Member-Ausdruck eingeben.": "Enter a simple variable name or member expression.",
+    "Ungültige Programmargumente": "Invalid program arguments",
+    "CMake-Zielsuche": "CMake target discovery",
+    "Keine benannten CMake-Ziele aus der Hilfeausgabe erkannt.": "No named CMake targets were detected in the help output.",
+    "Build erfolgreich; bitte CMake-Ziel auswählen, wenn mehrere Programme vorhanden sind.": "Build succeeded; select a CMake target if there are multiple programs.",
+    "Kein eindeutiges Programm gefunden. Baue das Projekt und wähle ein CMake-Ziel.": "No unique executable found. Build the project and select a CMake target.",
+    "Bitte zuerst das C++-Programm bauen und ein eindeutiges CMake-Ziel auswählen.": "Build the C++ program first and select a unique CMake target.",
+    "Zum Fehler springen": "Jump to error",
+    "Öffnet die im Compiler- oder Python-Fehler genannte Datei und springt zur Zeile.": "Opens the file named in a compiler or Python error and jumps to its line.",
+    "Keine Fehlerposition": "No error location",
+    "In der Konsolenausgabe wurde keine passende Datei- und Zeilenangabe gefunden.": "No matching file and line number was found in the console output.",
+    "Außerhalb des Projekts": "Outside project",
+    "Die gemeldete Fehlerdatei liegt außerhalb des ausgewählten Projektordners.": "The reported error file is outside the selected project folder.",
+    "Datei nicht gefunden": "File not found",
+    "Die in der Fehlermeldung genannte Datei wurde nicht gefunden: ": "The file named in the error message was not found: ",
+    "Zeile nicht vorhanden": "Line does not exist",
+    "Die gemeldete Zeile liegt außerhalb der geöffneten Datei.": "The reported line is outside the opened file.",
     "Datei": "File", "Bearbeiten": "Edit", "Ansicht": "View",
     "AI Horde · anonym und kostenlos · 256 × 256 Pixel\\nKein kostenpflichtiger Ersatzdienst. Bilder werden nicht automatisch gespeichert.": "AI Horde · anonymous and free · 256 × 256 pixels\\nNo paid replacement service. Images are not saved automatically.", "Projekte": "Projects", "Werkzeuge": "Tools", "Einstellungen": "Settings", "Hilfe": "Help",
     "Neuer Chat": "New chat", "Chats importieren": "Import chats", "Chats exportieren": "Export chats",
@@ -117,6 +177,34 @@ UI_TRANSLATIONS.update({
 })
 
 UI_LANGUAGE = "de"
+
+UI_TRANSLATIONS.update({
+    "CMake-Standard": "CMake default", "Automatisch / alle Ziele": "Automatic / all targets",
+    "Alle Ziele bauen": "Build all targets", "CMake-Generator:": "CMake generator:",
+    "CMake-Buildziele": "CMake build targets", "Keine CMake-Buildziele im Projekt gefunden.": "No CMake build targets were found in the project.",
+    "Build-Ordner:": "Build directory:", "Toolchain …": "Toolchain …",
+    "C-Compiler:": "C compiler:", "C++-Compiler:": "C++ compiler:",
+    "Standard-Compiler": "Default compiler", "C++-Einstieg:": "C++ entry point:",
+    "Kein main()-Einstieg erkannt": "No main() entry point detected",
+    "C++-Einstieg fehlt": "C++ entry point missing",
+    "Es wurde keine main()-Funktion erkannt. Lege eine Programmeinstiegsdatei an oder nutze CMake.": "No main() function was detected. Create a program entry-point file or use CMake.",
+    "Keine Quelldateien": "No source files", "Für den ausgewählten Programmeinstieg wurden keine Quelldateien gefunden.": "No source files were found for the selected entry point.",
+    "CMake-Toolchain-Datei auswählen": "Select CMake toolchain file", "Ungültige Toolchain": "Invalid toolchain",
+    "Die gespeicherte Toolchain-Datei ist ungültig.": "The saved toolchain file is invalid.",
+    "Der Build-Ordner muss ein relativer Pfad innerhalb des Projekts sein.": "The build directory must be a relative path inside the project.",
+    "Der Build-Ordner muss innerhalb des Projektordners liegen.": "The build directory must be inside the project folder.",
+    "CMake-Einstellungen": "CMake settings", "pkg-config fehlt. Installiere pkgconf.": "pkg-config is missing. Install pkgconf.",
+    "Ungültiger pkg-config-Paketname: ": "Invalid pkg-config package name: ",
+    "Ungültige Compiler-Angabe.": "Invalid compiler setting.",
+    "Compiler nicht gefunden": "Compiler not found",
+    "Der ausgewählte C++-Compiler wurde nicht gefunden: ": "The selected C++ compiler was not found: ",
+    "Debugger-Terminal": "Debugger terminal",
+    "Programm läuft": "Program is running",
+    "Haltepunkte anzeigen": "Show breakpoints",
+    "Alle Haltepunkte löschen": "Delete all breakpoints",
+    "Haltepunkte:": "Breakpoints:",
+    "Alle Haltepunkte wurden zum Löschen vorgemerkt.": "All breakpoints were queued for deletion.",
+})
 
 def tr(text):
     """Translate visible interface text using the saved UI language."""
@@ -667,7 +755,7 @@ AGENT_TOOLS = [
  {"type":"function","name":"list_workspace_files","description":"Listet die bisher im Arbeitsbereich erstellten Dateien auf.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
  {"type":"function","name":"list_project_files","description":"Listet Dateien im vom Nutzer ausdrücklich ausgewählten Projektordner auf. Nur verwenden, wenn der Projektzugriff in LunaGPT aktiviert ist.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
  {"type":"function","name":"read_project_file","description":"Liest eine Textdatei aus dem vom Nutzer ausgewählten Projektordner. Pfad relativ zum Projektordner. Nur verwenden, wenn Lesen freigegeben ist.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
- {"type":"function","name":"analyze_project","description":"Analysiert lesend die Struktur des ausdrücklich ausgewählten Projekts: Dateitypen, wichtige Projektdateien, Python-Einstiegspunkte und Verzeichnisübersicht. Verändert und startet nichts. Nur mit aktivierter Projekt-Lesefreigabe.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
+ {"type":"function","name":"analyze_project","description":"Analysiert lesend die Struktur des ausdrücklich ausgewählten Projekts: Dateitypen, wichtige Projektdateien, Python- und C++-Einstiegspunkte sowie Verzeichnisübersicht. Verändert und startet nichts. Nur mit aktivierter Projekt-Lesefreigabe.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
  {"type":"function","name":"check_project_python","description":"Prüft Python-Dateien im ausgewählten Projekt auf Syntaxfehler mit dem AST-Parser, ohne Code auszuführen oder Dateien zu verändern. Nur mit aktivierter Projekt-Lesefreigabe.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Optional: einzelne Python-Datei relativ zum Projektordner"}},"additionalProperties":False}},
  {"type":"function","name":"list_project_backups","description":"Listet Sicherungen im geschützten .lunagpt-backups-Ordner des ausgewählten Projekts auf. Nur verwenden, wenn Projekt-Lesen aktiviert ist.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Optionaler relativer Dateipfad"}},"additionalProperties":False}},
  {"type":"function","name":"read_project_backup","description":"Liest eine interne Sicherung. backup_id stammt aus list_project_backups; path ist der ursprüngliche relative Dateipfad. Nur lesend.","parameters":{"type":"object","properties":{"backup_id":{"type":"string"},"path":{"type":"string"}},"required":["backup_id","path"],"additionalProperties":False}},
@@ -680,9 +768,9 @@ AGENT_TOOLS = [
  {"type":"function","name":"create_zip","description":"Packt ein Projektverzeichnis oder ausgewählte Dateien aus dem LunaGPT-Arbeitsbereich in eine ZIP-Datei. Der Ausgabe-ZIP-Pfad ist relativ zum Arbeitsbereich.","parameters":{"type":"object","properties":{"output":{"type":"string"},"paths":{"type":"array","items":{"type":"string"},"description":"Zu packende Dateien/Verzeichnisse, relativ zum Arbeitsbereich"},"top_level_folder":{"type":"string","description":"Optionaler Ordnername, unter dem die Inhalte im ZIP liegen"}},"required":["output","paths"],"additionalProperties":False}},
  {"type":"function","name":"create_project_zip","description":"Erstellt eine ZIP direkt aus dem ausdrücklich ausgewählten lokalen Projektordner. Anders als create_zip verwendet dieses Werkzeug NICHT den Chat-Arbeitsbereich. Erfordert aktivierten Projekt-Lese- und Schreibzugriff. Ausgabe und Quellen müssen innerhalb des ausgewählten Projektordners liegen. Nutze es, wenn der Nutzer eine ZIP des ausgewählten Projekts verlangt.","parameters":{"type":"object","properties":{"output":{"type":"string","description":"Zielpfad relativ zum ausgewählten Projektordner, z.B. release/Projekt.zip"},"paths":{"type":"array","items":{"type":"string"},"description":"Zu packende Dateien/Ordner relativ zum ausgewählten Projektordner; für das ganze Projekt den Pfad . verwenden"},"top_level_folder":{"type":"string","description":"Optionaler Ordnername im ZIP"}},"required":["output","paths"],"additionalProperties":False}},
  {"type":"function","name":"set_project_script_executable","description":"Setzt das Ausführungsrecht für ein freigegebenes Buildskript im aktuell ausgewählten Projektordner oder einem Unterordner. Erfordert Build-Ausführungsfreigabe.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"build_deb.sh, build_release.sh oder release.sh; auch relativ in Unterordnern, z.B. gluecksrad/build_release.sh"}},"required":["path"],"additionalProperties":False}},
- {"type":"function","name":"run_project_command","description":"Führt nach ausdrücklicher Nutzeranweisung oder eindeutiger Fortsetzung eines freigegebenen offenen Auftrags einen begrenzten Build- oder Prüf-Befehl direkt im aktuell ausgewählten Projektordner aus. Erfordert aktivierte Projekt-Lese-, Schreib- UND Build-Ausführungsfreigabe. Kein Shell-Parsing, keine Pipes, Umleitungen oder sudo. Unterstützt Python-Syntaxprüfung, dpkg-deb-Prüfung/-Build, ZIP-Prüfung und freigegebene Buildskripte build_deb.sh/build_release.sh/release.sh.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"Ein einzelner Befehl relativ zum Projektordner, z.B. ./build_release.sh, python3 -m py_compile main.py oder dpkg-deb --info release/app.deb"}},"required":["command"],"additionalProperties":False}},
- {"type":"function","name":"run_workspace_command","description":"Führt einen begrenzten Build- oder Testbefehl im Arbeitsbereich aus. Kein Shell-Parsing, keine Pipes, Umleitungen oder sudo. Ein vorhandenes build_deb.sh darf auch in einem Projekt-Unterordner ausgeführt werden; das Skript läuft dann in seinem eigenen Projektordner. Zulässig sind Python-Syntaxprüfung, dpkg-deb, zip/unzip-Prüfung und vorhandene Buildskripte.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"Ein einzelner Befehl, z.B. python3 -m py_compile Projekt/lunagpt/main.py, ./Projekt/build_deb.sh oder dpkg-deb --info Projekt/dist/lunagpt.deb"}},"required":["command"],"additionalProperties":False}}
- ,{"type":"function","name":"prepare_github_release","description":"Bereitet nach ausdrücklichem Nutzerauftrag ein sauberes GitHub-Repository und ein separates, neu gebautes DEB vor; unterstützt sowohl LunaGPT-Repositories als auch normale Testprojekte mit main.py im Projektstamm; die Ausgabe wird als zwei einzelne Dateien im release/-Ordner abgelegt, nicht als Gesamtarchiv des Arbeitsbereichs. Entfernt nur generierte build/dist/Cache-Dateien innerhalb des angegebenen Projektordners, führt build_deb.sh aus, prüft Syntax und Paketversion, erstellt eine saubere Repository-ZIP ohne alte DEBs/Builddateien und kopiert das neu gebaute DEB als separates Ergebnis. Der Ausgabeordner release/ enthält danach ausschließlich die aktuelle GitHub-ZIP und das dazugehörige DEB; alte Release-Ausgaben werden vorab entfernt. Verwende dies bei Aufträgen wie 'GitHub-fertig machen, saubere ZIP und DEB geben'. Es lädt nichts zu GitHub hoch.","parameters":{"type":"object","properties":{"project":{"type":"string","description":"Relativer Pfad zum entpackten Projektordner im Arbeitsbereich"},"version":{"type":"string","description":"Erwartete Versionsnummer, z.B. 1.7.4"},"zip_name":{"type":"string","description":"Dateiname der Repository-ZIP, z.B. LunaGPT-1.7.4-GitHub.zip"}},"required":["project","version","zip_name"],"additionalProperties":False}}
+ {"type":"function","name":"run_project_command","description":"Führt nach ausdrücklicher Nutzeranweisung einen begrenzten Build-/Prüf-Befehl im ausgewählten Projektordner aus. Erfordert Projekt-Lese-, Schreib- und Build-Ausführungsfreigabe. WICHTIG: Wenn der Nutzer ausdrücklich verlangt, ein neu erstelltes CMake-/C++-Projekt zu bauen und zu starten, MUSST du dieses Werkzeug tatsächlich aufrufen: zuerst CMake konfigurieren, danach bauen und danach das erzeugte Programm starten. Gib nicht nur Terminalbefehle aus. Kein Shell-Parsing, keine Pipes, Umleitungen oder sudo.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"Ein einzelner Befehl relativ zum Projektordner. CMake-Sequenz: cmake -S . -B build, danach cmake --build build, danach ./build/PROGRAMM. Beispiele: cmake -S . -B build; cmake --build build; ./build/app; g++ main.cpp -o build/app; python3 main.py."},"stdin":{"type":"string","description":"Optionaler Text für die Standardeingabe, z.B. mehrzeilige Testeingaben für ein Konsolenmenü. Nur verwenden, wenn die Eingabefolge aus dem Quellcode bekannt ist; maximal 10000 Zeichen."}},"required":["command"],"additionalProperties":False}},
+ {"type":"function","name":"run_workspace_command","description":"Führt nach ausdrücklichem Nutzerauftrag begrenzte Build- und Testbefehle im isolierten Chat-Arbeitsbereich aus. Kein Shell-Parsing, keine Pipes, Umleitungen oder sudo. Unterstützt Python-Syntaxprüfung/-Start, CMake-Konfiguration und Build, C++-Build mit g++/c++ sowie den Start ausführbarer Dateien innerhalb des Arbeitsbereichs, dpkg-deb, zip/unzip-Prüfung und vorhandene Buildskripte. Bei einem ausdrücklich angeforderten C++-/CMake-Projekt MUSST du nach dem Erstellen der Dateien tatsächlich konfigurieren, bauen und starten; gib nicht nur Terminalbefehle aus.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"Ein einzelner Befehl relativ zum Chat-Arbeitsbereich, z.B. cmake -S LunaRechner -B LunaRechner/build; cmake --build LunaRechner/build; ./LunaRechner/build/LunaRechner; g++ LunaRechner/main.cpp LunaRechner/rechner.cpp -std=c++17 -o LunaRechner/build/LunaRechner."},"stdin":{"type":"string","description":"Optionaler Text für die Standardeingabe, z.B. mehrzeilige Testeingaben für ein Konsolenmenü; maximal 10000 Zeichen."}},"required":["command"],"additionalProperties":False}},
+ {"type":"function","name":"prepare_github_release","description":"Bereitet nach ausdrücklichem Nutzerauftrag ein sauberes GitHub-Repository und ein separates, neu gebautes DEB vor; unterstützt sowohl LunaGPT-Repositories als auch normale Testprojekte mit main.py im Projektstamm; die Ausgabe wird als zwei einzelne Dateien im release/-Ordner abgelegt, nicht als Gesamtarchiv des Arbeitsbereichs. Entfernt nur generierte build/dist/Cache-Dateien innerhalb des angegebenen Projektordners, führt build_deb.sh aus, prüft Syntax und Paketversion, erstellt eine saubere Repository-ZIP ohne alte DEBs/Builddateien und kopiert das neu gebaute DEB als separates Ergebnis. Der Ausgabeordner release/ enthält danach ausschließlich die aktuelle GitHub-ZIP und das dazugehörige DEB; alte Release-Ausgaben werden vorab entfernt. Verwende dies bei Aufträgen wie 'GitHub-fertig machen, saubere ZIP und DEB geben'. Es lädt nichts zu GitHub hoch.","parameters":{"type":"object","properties":{"project":{"type":"string","description":"Relativer Pfad zum entpackten Projektordner im Arbeitsbereich"},"version":{"type":"string","description":"Erwartete Versionsnummer, z.B. 1.7.4"},"zip_name":{"type":"string","description":"Dateiname der Repository-ZIP, z.B. LunaGPT-1.7.4-GitHub.zip"}},"required":["project","version","zip_name"],"additionalProperties":False}}
 
 ]
 
@@ -993,6 +1081,8 @@ class AgentTools:
                     "file_types":dict(sorted(counts.items(),key=lambda kv:(-kv[1],kv[0]))),
                     "important_files":important,"python_files":len(py),
                     "python_entry_candidates":[x for x in py if Path(x).name in ("main.py","__main__.py","app.py")][:100],
+                    "cpp_files":sum(1 for x in files if Path(x["path"]).suffix.lower() in (".cpp",".cc",".cxx",".c")),
+                    "cpp_entry_candidates":[x["path"] for x in files if Path(x["path"]).name in ("main.cpp","main.cc","main.cxx")][:100],
                     "files":files[:500],"file_list_truncated":len(files)>500}
         if name == "check_project_python":
             if not self.project_read_enabled or self.project_root is None:
@@ -1198,13 +1288,113 @@ class AgentTools:
                 parts=[str(script)]
             elif executable == "python3":
                 if len(parts)>=4 and parts[1:3]==["-m","py_compile"]:
-                    for arg in parts[3:]:
+                    py_args=parts[3:]
+                    if not py_args: raise ValueError("Bitte mindestens eine .py-Datei angeben.")
+                    for arg in py_args:
                         candidate=(self.project_root/arg).resolve()
-                        if Path(arg).is_absolute() or (candidate!=self.project_root and self.project_root not in candidate.parents) or not candidate.is_file() or candidate.suffix!=".py":
+                        if Path(arg).is_absolute() or self.project_root not in candidate.parents or not candidate.is_file() or candidate.suffix.lower()!=".py":
                             raise ValueError("Syntaxprüfung ist nur für vorhandene Python-Dateien innerhalb des Projektordners erlaubt.")
-                    if len(parts)==3: raise ValueError("Bitte mindestens eine .py-Datei angeben.")
+                elif len(parts)>=2 and not parts[1].startswith("-"):
+                    candidate=(self.project_root/parts[1]).resolve()
+                    if Path(parts[1]).is_absolute() or self.project_root not in candidate.parents or not candidate.is_file() or candidate.suffix.lower()!=".py":
+                        raise ValueError("Python-Start ist nur für vorhandene .py-Dateien innerhalb des ausgewählten Projektordners erlaubt.")
+                    parts[1]=str(candidate)
+                    cwd=candidate.parent
                 else:
-                    raise ValueError("Python ist hier ausschließlich für py_compile freigegeben. Für Builds verwende ein freigegebenes Buildskript.")
+                    raise ValueError("Python erlaubt Syntaxprüfung oder den Start einer vorhandenen .py-Datei im ausgewählten Projektordner.")
+            elif executable in ("g++", "c++"):
+                if "-fsyntax-only" in parts:
+                    sources=parts[parts.index("-fsyntax-only")+1:]
+                    if not sources: raise ValueError("Bitte mindestens eine C++-Quelldatei zur Syntaxprüfung angeben.")
+                    resolved=[]
+                    for source_arg in sources:
+                        source=(self.project_root/source_arg).resolve()
+                        if Path(source_arg).is_absolute() or self.project_root not in source.parents or not source.is_file() or source.suffix.lower() not in (".cpp", ".cc", ".cxx", ".c"):
+                            raise ValueError("C++-Quellen müssen vorhandene .cpp/.cc/.cxx/.c-Dateien im Projektordner sein.")
+                        resolved.append(str(source))
+                    parts=[executable,"-fsyntax-only",*resolved]
+                else:
+                    if len(parts)<4 or "-o" not in parts:
+                        raise ValueError("C++-Build: g++ quelle.cpp [- weitere.cpp] -o build/programm")
+                    out_index=parts.index("-o")
+                    sources=parts[1:out_index]
+                    if not sources or out_index+1>=len(parts) or out_index+2!=len(parts):
+                        raise ValueError("C++-Build erwartet Quell-Dateien und genau einen Ausgabepfad hinter -o.")
+                    resolved=[]
+                    for source_arg in sources:
+                        source=(self.project_root/source_arg).resolve()
+                        if Path(source_arg).is_absolute() or self.project_root not in source.parents or not source.is_file() or source.suffix.lower() not in (".cpp", ".cc", ".cxx", ".c"):
+                            raise ValueError("C++-Quellen müssen vorhandene .cpp/.cc/.cxx/.c-Dateien im Projektordner sein.")
+                        resolved.append(str(source))
+                    output_arg=parts[-1]
+                    output=(self.project_root/output_arg).resolve()
+                    if Path(output_arg).is_absolute() or self.project_root not in output.parents:
+                        raise ValueError("C++-Ausgabedatei muss innerhalb des Projektordners liegen.")
+                    output.parent.mkdir(parents=True,exist_ok=True)
+                    parts=[executable,*resolved,"-o",str(output)]
+            elif executable == "cmake":
+                # CMake may be invoked with paths relative to the selected folder
+                # OR with absolute paths that resolve inside it. This supports
+                # projects nested below the workspace without weakening the
+                # project boundary or allowing symlink/path traversal escapes.
+                project_root=self.project_root.resolve()
+
+                def resolve_cmake_path(raw_path, description, allow_root=False):
+                    raw=Path(raw_path).expanduser()
+                    candidate=raw if raw.is_absolute() else project_root/raw
+                    resolved=candidate.resolve()
+                    try:
+                        resolved.relative_to(project_root)
+                    except ValueError:
+                        raise ValueError(description+" muss innerhalb des ausgewählten Projektordners liegen.")
+                    if not allow_root and resolved==project_root:
+                        raise ValueError(description+" darf nicht der Projektstamm selbst sein.")
+                    return resolved
+
+                if len(parts)==5 and parts[1]=="-S" and parts[3]=="-B":
+                    source_dir=resolve_cmake_path(parts[2],"CMake-Quellordner",allow_root=True)
+                    build_dir=resolve_cmake_path(parts[4],"CMake-Buildverzeichnis")
+                    if not source_dir.is_dir() or not (source_dir/"CMakeLists.txt").is_file():
+                        raise ValueError("Im angegebenen CMake-Quellordner wurde keine CMakeLists.txt gefunden.")
+                    if build_dir==source_dir:
+                        raise ValueError("Das CMake-Buildverzeichnis darf nicht mit dem Quellordner identisch sein.")
+                    build_dir.mkdir(parents=True,exist_ok=True)
+                    parts=[executable,"-S",str(source_dir),"-B",str(build_dir)]
+                elif len(parts) in (3,5) and parts[1]=="--build":
+                    build_dir=resolve_cmake_path(parts[2],"CMake-Buildverzeichnis")
+                    if not build_dir.is_dir() or not (build_dir/"CMakeCache.txt").is_file():
+                        raise ValueError("CMake darf nur ein konfiguriertes Buildverzeichnis innerhalb des Projekts bauen.")
+                    if len(parts)==5 and parts[3]=="--target":
+                        target_name=parts[4]
+                        if not re.fullmatch(r"[A-Za-z0-9_.+-]{1,100}",target_name):
+                            raise ValueError("Ungültiger CMake-Targetname.")
+                        parts=[executable,"--build",str(build_dir),"--target",target_name]
+                    elif len(parts)==3:
+                        parts=[executable,"--build",str(build_dir)]
+                    else:
+                        raise ValueError("Erlaubt: cmake --build build oder cmake --build build --target NAME.")
+                else:
+                    raise ValueError("Erlaubt: cmake -S QUELLORDNER -B BUILDORDNER, cmake --build BUILDORDNER oder cmake --build BUILDORDNER --target NAME. Relative und absolute Pfade innerhalb des ausgewählten Projektordners sind erlaubt.")
+            elif executable == "gdb":
+                # Non-interactive debugging only: run one project-local executable
+                # and collect its output/backtrace; no arbitrary GDB command scripts.
+                if len(parts)<7 or parts[1:5] != ["--batch","--quiet","-ex","run"] or parts[5]!="-ex" or parts[6]!="bt":
+                    raise ValueError("GDB-Aufruf: gdb --batch --quiet -ex run -ex bt --args build/programm [Programmargumente]")
+                if len(parts)<9 or parts[7]!="--args":
+                    raise ValueError("GDB benötigt --args und eine ausführbare Datei aus dem Projekt.")
+                target_arg=parts[8]
+                target_path=Path(target_arg)
+                target=(self.project_root/target_path).resolve()
+                if target_path.is_absolute() or ".." in target_path.parts or self.project_root not in target.parents or not target.is_file() or not os.access(target,os.X_OK):
+                    raise ValueError("GDB darf nur vorhandene ausführbare Dateien innerhalb des ausgewählten Projekts starten.")
+                parts=[executable,"--batch","--quiet","-ex","run","-ex","bt","--args",str(target),*parts[9:]]
+                cwd=target.parent
+            elif executable.startswith("./"):
+                candidate=(self.project_root/executable[2:]).resolve()
+                if self.project_root not in candidate.parents or not candidate.is_file() or not os.access(candidate,os.X_OK):
+                    raise ValueError("Ausführen ist nur für vorhandene ausführbare Dateien innerhalb des ausgewählten Projekts erlaubt.")
+                parts=[str(candidate),*parts[1:]]
+                cwd=candidate.parent
             elif executable == "dpkg-deb":
                 if len(parts)==3 and parts[1] in ("--info","--contents","-f"):
                     target=(self.project_root/parts[2]).resolve()
@@ -1231,10 +1421,13 @@ class AgentTools:
                 if self.project_root not in candidate.parents or not candidate.is_file() or candidate.suffix.lower()!=".zip":
                     raise ValueError("Zu prüfendes ZIP-Archiv muss innerhalb des Projektordners vorhanden sein.")
             else:
-                raise ValueError("Nicht freigegeben. Erlaubt sind build_deb.sh/build_release.sh/release.sh, Python-Syntaxprüfung, dpkg-deb sowie zip/unzip-Prüfungen.")
-            env={"PATH":os.environ.get("PATH","/usr/bin:/bin"),"HOME":str(self.project_root),"LANG":"C.UTF-8","LC_ALL":"C.UTF-8"}
-            proc=subprocess.run(parts,cwd=str(cwd),capture_output=True,text=True,timeout=600,env=env)
-            return {"command":command,"returncode":proc.returncode,"success":proc.returncode==0,"stdout":(proc.stdout or "")[-16000:],"stderr":(proc.stderr or "")[-16000:],"project":str(self.project_root),"working_directory":str(cwd)}
+                raise ValueError("Nicht freigegeben. Erlaubt sind freigegebene Buildskripte, Python-Syntaxprüfung/-Start, C++-Build/Start, CMake-Konfiguration/-Build, GDB-Batch-Debugging, dpkg-deb sowie zip/unzip-Prüfungen.")
+            stdin_text=args.get("stdin")
+            if stdin_text is not None and (not isinstance(stdin_text,str) or len(stdin_text)>10000):
+                raise ValueError("stdin muss Text mit maximal 10000 Zeichen sein.")
+            env={"PATH":os.environ.get("PATH","/usr/bin:/bin"),"HOME":os.environ.get("HOME",str(self.project_root)),"LANG":"C.UTF-8","LC_ALL":"C.UTF-8"}
+            proc=subprocess.run(parts,cwd=str(cwd),capture_output=True,text=True,input=stdin_text,timeout=600,env=env)
+            return {"command":command,"returncode":proc.returncode,"success":proc.returncode==0,"stdout":(proc.stdout or "")[-16000:],"stderr":(proc.stderr or "")[-16000:],"stdin_supplied":stdin_text is not None,"project":str(self.project_root),"working_directory":str(cwd)}
         if name == "set_project_script_executable":
             if not self.project_exec_enabled or self.project_root is None:
                 raise ValueError("Build-Ausführungsfreigabe ist nicht aktiviert.")
@@ -1259,12 +1452,13 @@ class AgentTools:
             parts=shlex.split(command)
             if not parts: raise ValueError("Leerer Befehl.")
             executable=parts[0]
-            allowed=("python3", "dpkg-deb", "zip", "unzip")
+            allowed=("python3", "dpkg-deb", "zip", "unzip", "cmake", "g++", "c++")
             script_path = None
             command_cwd = self.root
             is_build_script = executable.endswith("build_deb.sh") and not Path(executable).is_absolute()
-            if executable not in allowed and not is_build_script:
-                raise ValueError("Dieser Befehl ist nicht freigegeben. Zulässig: python3, dpkg-deb, zip, unzip oder ein vorhandenes build_deb.sh innerhalb des Arbeitsbereichs.")
+            is_project_executable = executable.startswith("./")
+            if executable not in allowed and not is_build_script and not is_project_executable:
+                raise ValueError("Dieser Befehl ist nicht freigegeben. Zulässig: python3, cmake, g++, c++, ein vorhandenes Projektprogramm, dpkg-deb, zip, unzip oder ein vorhandenes build_deb.sh innerhalb des Arbeitsbereichs.")
             if is_build_script:
                 if len(parts)!=1 or ".." in Path(executable).parts:
                     raise ValueError("Ein Buildskript darf ohne Zusatzargumente nur über einen sicheren relativen Pfad aufgerufen werden.")
@@ -1293,6 +1487,75 @@ class AgentTools:
                         raise ValueError("Python-Programmstart ist nur für eine vorhandene .py-Datei innerhalb des Arbeitsbereichs freigegeben.")
                 else:
                     raise ValueError("python3 ist nur für Syntaxprüfungen oder den explizit angeforderten Start einer vorhandenen .py-Datei im Arbeitsbereich freigegeben.")
+            elif executable == "cmake":
+                workspace_root=self.root.resolve()
+                def resolve_workspace_path(raw_path, description, allow_root=False):
+                    raw=Path(raw_path)
+                    if raw.is_absolute() or ".." in raw.parts:
+                        raise ValueError(description+" muss ein relativer Pfad innerhalb des Chat-Arbeitsbereichs sein.")
+                    candidate=(workspace_root/raw).resolve()
+                    if candidate!=workspace_root and workspace_root not in candidate.parents:
+                        raise ValueError(description+" liegt außerhalb des Chat-Arbeitsbereichs.")
+                    if not allow_root and candidate==workspace_root:
+                        raise ValueError(description+" darf nicht der Arbeitsbereich selbst sein.")
+                    return candidate
+                if len(parts)==5 and parts[1]=="-S" and parts[3]=="-B":
+                    source_dir=resolve_workspace_path(parts[2],"CMake-Quellordner",allow_root=True)
+                    build_dir=resolve_workspace_path(parts[4],"CMake-Buildverzeichnis")
+                    if not source_dir.is_dir() or not (source_dir/"CMakeLists.txt").is_file() or build_dir==source_dir:
+                        raise ValueError("CMake-Quellordner muss eine CMakeLists.txt enthalten; Build- und Quellordner müssen verschieden sein.")
+                    build_dir.mkdir(parents=True,exist_ok=True)
+                    parts=[executable,"-S",str(source_dir),"-B",str(build_dir)]
+                elif len(parts) in (3,5) and parts[1]=="--build":
+                    build_dir=resolve_workspace_path(parts[2],"CMake-Buildverzeichnis")
+                    if not build_dir.is_dir() or not (build_dir/"CMakeCache.txt").is_file():
+                        raise ValueError("CMake darf nur ein zuvor konfiguriertes Buildverzeichnis innerhalb des Arbeitsbereichs bauen.")
+                    if len(parts)==5 and parts[3]=="--target":
+                        if not re.fullmatch(r"[A-Za-z0-9_.+-]{1,100}",parts[4]):
+                            raise ValueError("Ungültiger CMake-Targetname.")
+                        parts=[executable,"--build",str(build_dir),"--target",parts[4]]
+                    elif len(parts)==3:
+                        parts=[executable,"--build",str(build_dir)]
+                    else:
+                        raise ValueError("Erlaubt: cmake --build BUILDORDNER oder cmake --build BUILDORDNER --target NAME.")
+                else:
+                    raise ValueError("Erlaubt: cmake -S QUELLORDNER -B BUILDORDNER oder cmake --build BUILDORDNER [--target NAME].")
+            elif executable in ("g++","c++"):
+                workspace_root=self.root.resolve()
+                if len(parts)<5 or "-o" not in parts:
+                    raise ValueError("C++-Build: g++ quelle.cpp [weitere.cpp] -std=c++17 -o build/programm")
+                out_index=parts.index("-o")
+                if out_index<2 or out_index+2!=len(parts):
+                    raise ValueError("C++-Build benötigt mindestens eine Quelldatei und genau einen Ausgabepfad hinter -o.")
+                resolved=[]
+                compiler_flags=[]
+                allowed_flags={"-g","-O0","-O1","-O2","-O3","-Wall","-Wextra","-pedantic"}
+                for source_arg in parts[1:out_index]:
+                    if source_arg in allowed_flags or re.fullmatch(r"-std=c\+\+(11|14|17|20|23)",source_arg):
+                        compiler_flags.append(source_arg)
+                        continue
+                    source_path=Path(source_arg)
+                    source=(workspace_root/source_path).resolve()
+                    if source_path.is_absolute() or ".." in source_path.parts or self.root not in source.parents or not source.is_file() or source.suffix.lower() not in (".cpp",".cc",".cxx",".c"):
+                        raise ValueError("C++-Quellen müssen vorhandene .cpp/.cc/.cxx/.c-Dateien innerhalb des Chat-Arbeitsbereichs sein; nur freigegebene Compileroptionen sind erlaubt.")
+                    resolved.append(str(source))
+                if not resolved:
+                    raise ValueError("Bitte mindestens eine C++-Quelldatei angeben.")
+                output_path=Path(parts[-1])
+                output=(workspace_root/output_path).resolve()
+                if output_path.is_absolute() or ".." in output_path.parts or self.root not in output.parents:
+                    raise ValueError("C++-Ausgabedatei muss innerhalb des Chat-Arbeitsbereichs liegen.")
+                output.parent.mkdir(parents=True,exist_ok=True)
+                parts=[executable,*resolved,*compiler_flags,"-o",str(output)]
+            elif is_project_executable:
+                relative=Path(executable[2:])
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise ValueError("Programmstart ist nur mit einem relativen Pfad innerhalb des Chat-Arbeitsbereichs erlaubt.")
+                target=(self.root/relative).resolve()
+                if self.root not in target.parents or not target.is_file() or not os.access(target,os.X_OK):
+                    raise ValueError("Nur vorhandene ausführbare Programme innerhalb des Chat-Arbeitsbereichs dürfen gestartet werden.")
+                parts=[str(target),*parts[1:]]
+                command_cwd=target.parent
             elif executable == "dpkg-deb":
                 # Read-only inspection plus a build into the workspace are supported.
                 if len(parts)==3 and parts[1] in ("--info", "--contents"):
@@ -1330,10 +1593,13 @@ class AgentTools:
                             raise ValueError("unzip darf nur ZIP-Dateien und Ziele innerhalb des Arbeitsbereichs verwenden.")
             # Kommandos laufen nur im aktuellen Projekt-Arbeitsordner und mit Zeit-/Ausgabelimit.
             self.root.mkdir(parents=True, exist_ok=True)
-            proc=subprocess.run(parts, cwd=str(command_cwd), capture_output=True, text=True, timeout=300,
+            stdin_text=args.get("stdin")
+            if stdin_text is not None and (not isinstance(stdin_text,str) or len(stdin_text)>10000):
+                raise ValueError("stdin muss Text mit maximal 10000 Zeichen sein.")
+            proc=subprocess.run(parts, cwd=str(command_cwd), capture_output=True, text=True, input=stdin_text, timeout=300,
                                 env={"PATH":os.environ.get("PATH","/usr/bin:/bin"),"HOME":str(self.root),"LANG":"C.UTF-8","LC_ALL":"C.UTF-8"})
             out=(proc.stdout or "")[-12000:]; err=(proc.stderr or "")[-12000:]
-            return {"command":command,"returncode":proc.returncode,"success":proc.returncode==0,"stdout":out,"stderr":err,"workspace":str(self.root),"working_directory":str(command_cwd)}
+            return {"command":command,"returncode":proc.returncode,"success":proc.returncode==0,"stdout":out,"stderr":err,"stdin_supplied":stdin_text is not None,"workspace":str(self.root),"working_directory":str(command_cwd)}
         if name == "set_workspace_executable":
             target=self._safe(args.get("path"))
             if target.suffix != ".sh" or not target.is_file():
@@ -1679,6 +1945,27 @@ def _bilingualization_task_context(messages):
     return len(latest) <= 220 and any(term in latest for term in continuation_terms)
 
 
+def _explicit_project_build_request(messages):
+    """True only when the latest user message explicitly requests build/run work."""
+    latest = ""
+    for message in reversed(messages or []):
+        if message.get("role") == "user":
+            latest = str(message.get("content", "")).casefold()
+            break
+    if not latest:
+        return False
+    asks_build = any(term in latest for term in (
+        "baue", "bauen", "build", "kompil", "kompiliere", "kompilieren",
+        "erstelle und starte", "bauen und starten", "build und start",
+        "gestartet werden kann", "programm starten", "programm ausführen",
+        "anschließend gestartet", "anschliessend gestartet"
+    ))
+    refers_to_project = any(term in latest for term in (
+        "projekt", "programm", "cmake", "c++", "cpp", "quelldatei"
+    ))
+    return asks_build and refers_to_project
+
+
 def _agent_run(url, token, model, messages, use_web, attachments, chat_id=None, workspace_dir=None, project_dir=None, project_read_enabled=False, project_write_enabled=False, project_exec_enabled=False):
     tools=AgentTools(attachments, chat_id, workspace_dir, project_dir, project_read_enabled, project_write_enabled, project_exec_enabled)
     conversation=[]
@@ -1686,7 +1973,14 @@ def _agent_run(url, token, model, messages, use_web, attachments, chat_id=None, 
     for m in messages:
         if m.get("role")=="system": instructions=m.get("content","")
         else: conversation.append({"role":m["role"],"content":m["content"]})
-    instructions += "\n\nLOKALER PROJEKTZUGRIFF: " + ("Der Nutzer hat diesen Projektordner ausdrücklich ausgewählt: " + str(tools.project_root) + ". Lesen ist " + ("freigegeben" if tools.project_read_enabled else "NICHT freigegeben") + "; Änderungen sind " + ("freigegeben" if tools.project_write_enabled else "NICHT freigegeben") + "; Build-/Befehlsausführung ist " + ("freigegeben" if tools.project_exec_enabled else "NICHT freigegeben") + ". Führe Projekt-Builds ausschließlich im ausgewählten Projektordner mit run_project_command aus, und nur wenn die aktuelle Nutzernachricht oder der eindeutig fortgesetzte ursprüngliche Auftrag den Build ausdrücklich verlangt. Bei konkreten Projektfragen darfst du bei aktivierter Lesefreigabe list_project_files/read_project_file verwenden. Schreibe oder ändere Projektdateien nur, wenn die aktuelle Nutzernachricht oder die eindeutige Fortsetzung eines noch offenen konkreten Auftrags eine Änderung verlangt UND project_write_enabled aktiv ist. Vorhandene Dateien werden vor dem Überschreiben gesichert; nenne immer den absoluten Dateipfad und den Sicherungspfad. Für punktuelle Änderungen an vorhandenen Dateien, besonders großen Dateien, nutze bevorzugt patch_project_file statt die komplette Datei mit write_project_file zu ersetzen. Bei deaktivierter Freigabe bitte den Nutzer um Aktivierung, statt Zugriff zu versuchen." if tools.project_root else "Es ist kein lokaler Projektordner ausgewählt. Verwende für eigene Ausgaben ausschließlich den LunaGPT-Arbeitsbereich.") + "\n\nZIP-REGEL: create_zip packt ausschließlich Inhalte des aktuellen Chat-Arbeitsbereichs. Wenn der Nutzer eine ZIP des links ausgewählten Projektordners verlangt, verwende create_project_zip mit relativen Pfaden innerhalb dieses Projektordners (für das ganze Projekt paths=[\".\"]). Dafür müssen Projekt-Lese- und Schreibfreigabe aktiv sein. Behaupte nicht, der ausgewählte Projektordner könne nicht gepackt werden, wenn create_project_zip verfügbar und freigegeben ist.\n\nWICHTIG ZUM SPEICHERORT: Der aktuelle Arbeitsbereich lautet exakt: " + str(tools.root) + ". Nach JEDEM Erstellen, Kopieren, Entpacken oder Erzeugen eines ZIP/DEB musst du dem Nutzer den vollständigen absoluten Dateipfad nennen. Bei mehreren Dateien alle relevanten absoluten Pfade aufführen. Behaupte niemals, eine Datei sei automatisch im Download-Ordner.\n\nDu hast Werkzeuge für echte Dateiarbeit. Entscheide anhand der aktuellen Nutzeranweisung in natürlicher Sprache, ob Dateiarbeit ausdrücklich beauftragt wurde. Eine normale Nachricht, ein bloßer Klick auf Senden, ein Anhang allein oder ein früherer, bereits abgeschlossener Auftrag sind KEINE Erlaubnis. Eine eindeutige Fortsetzung eines noch offenen, ausdrücklich beauftragten Auftrags ist dagegen weiterhin freigegeben. Rufe Dateiwerkzeuge nur auf, wenn die aktuelle Nachricht oder die eindeutige Fortsetzung eines noch offenen ausdrücklich beauftragten Auftrags verlangt, Anhänge zu untersuchen, Dateien/Code zu erstellen oder zu ändern, ein Projekt vorzubereiten oder eine ZIP zu erzeugen. Verwende keine starren Schlüsselwortregeln; verstehe den Sinn des aktuellen Auftrags. Wenn ein neu erstelltes Shell-Skript wie build_deb.sh vor dem Packen ausführbar sein muss, verwende set_workspace_executable auf die konkrete .sh-Datei im Arbeitsbereich, bevor du create_zip oder prepare_github_release ausführst; ändere Rechte nur im Rahmen des ausdrücklich angeforderten Projektauftrags und prüfe danach die ZIP-Metadaten. Wenn kein solcher Auftrag vorliegt, antworte normal im Chat und erstelle nichts. Bei einem konkreten Projekt-/GitHub-Archivauftrag: Rufe zuerst list_attachments auf, extrahiere angehängte Quell-ZIPs mit extract_attachment_to_workspace und kopiere angehängte DEBs mit copy_attachment_to_workspace. Untersuche danach die vollständigen extrahierten Dateien und Paketdateien. Erstelle ein vollständiges Repository mit dem echten Quellcode und allen erforderlichen Dateien; schreibe NICHT nur README/CHANGELOG/Lizenz und behaupte dann, das Projekt sei fertig. Wenn Quellcode im ausgewählten Projektordner geändert wurde und der Nutzer ein lauffähiges Paket verlangt, nutze bei aktivierter separater Build-Freigabe run_project_command für Syntaxprüfungen und zum Ausführen eines freigegebenen Buildskripts direkt im Projektordner; baue DEBs nicht nur durch Kopieren eines alten Pakets. Ein nicht ausführbares Buildskript darfst du nur mit set_project_script_executable ausführbar machen, wenn die Build-Freigabe aktiv ist. Führe Arbeitsbereich-Befehle nur im Arbeitsbereich aus. Für den ausdrücklich ausgewählten lokalen Projektordner verwende run_project_command; dieses Werkzeug benötigt eine eigene Build-Ausführungsfreigabe und führt nur die begrenzten Prüf-/Build-Befehle im Projektordner aus. Melde fehlgeschlagene Tests ehrlich. Für ausdrücklich angeforderte Funktionsprüfungen darfst du `python3 Projekt/main.py` verwenden, sofern die .py-Datei im Arbeitsbereich liegt; `dpkg-deb --build --root-owner-group` ist ebenfalls für Build-Ordner innerhalb des Arbeitsbereichs erlaubt. Packe niemals den gesamten Chat-Arbeitsbereich als äußeres ZIP. Gib ausschließlich die beiden Dateien aus `release/` getrennt aus und nenne ihre exakten Pfade. Bei selbst erzeugten Debian-Buildskripten verwende `dpkg-deb --build --root-owner-group` (sofern vom installierten dpkg-deb unterstützt), damit Eigentümer und Gruppe im Paket reproduzierbar root:root sind; behandle Warnungen nicht als erfolgreich bereinigt, sondern prüfe den Build-Ausgang. Der dedizierte release/-Ordner muss nach erfolgreicher Release-Vorbereitung nur die aktuelle GitHub-ZIP und das frisch aus genau dieser ZIP gebaute DEB enthalten; gib diese zwei Dateien getrennt aus, nicht den kompletten Arbeitsordner. Erstelle eine ZIP mit dem kompletten Repository einschließlich Quellcode und bei explizitem Wunsch auch die originale oder neu gebaute DEB-Datei. Wenn der Nutzer ein GitHub-fertiges Projekt mit sauberer ZIP und neu gebautem DEB verlangt, nutze nach den notwendigen Codeänderungen bevorzugt prepare_github_release; gib niemals alte DEBs als neu gebaut aus und prüfe die zurückgegebenen success-/Versions-/Pfadangaben. Prüfe vor Abschluss mit list_workspace_files, dass Quellcode, README, CHANGELOG und gewünschte Pakete wirklich enthalten sind. Sage niemals, etwas erstellt zu haben, bevor das Werkzeug Erfolg gemeldet hat. Nenne am Ende die vollständigen Ausgabe-Pfade. GitHub-Upload/Push ist nicht verfügbar; erstelle stattdessen ein GitHub-fertiges lokales Projekt/ZIP, wenn das gemeint ist."
+    instructions += "\n\nLOKALER PROJEKTZUGRIFF: " + ("Der Nutzer hat diesen Projektordner ausdrücklich ausgewählt: " + str(tools.project_root) + ". Lesen ist " + ("freigegeben" if tools.project_read_enabled else "NICHT freigegeben") + "; Änderungen sind " + ("freigegeben" if tools.project_write_enabled else "NICHT freigegeben") + "; Build-/Befehlsausführung ist " + ("freigegeben" if tools.project_exec_enabled else "NICHT freigegeben") + ". Führe Projekt-Builds ausschließlich im ausgewählten Projektordner mit run_project_command aus, und nur wenn die aktuelle Nutzernachricht oder der eindeutig fortgesetzte ursprüngliche Auftrag den Build ausdrücklich verlangt. Bei konkreten Projektfragen darfst du bei aktivierter Lesefreigabe list_project_files/read_project_file verwenden. Schreibe oder ändere Projektdateien nur, wenn die aktuelle Nutzernachricht oder die eindeutige Fortsetzung eines noch offenen konkreten Auftrags eine Änderung verlangt UND project_write_enabled aktiv ist. Vorhandene Dateien werden vor dem Überschreiben gesichert; nenne immer den absoluten Dateipfad und den Sicherungspfad. Für punktuelle Änderungen an vorhandenen Dateien, besonders großen Dateien, nutze bevorzugt patch_project_file statt die komplette Datei mit write_project_file zu ersetzen. Bei deaktivierter Freigabe bitte den Nutzer um Aktivierung, statt Zugriff zu versuchen." if tools.project_root else "Es ist kein lokaler Projektordner ausgewählt. Verwende für eigene Ausgaben ausschließlich den LunaGPT-Arbeitsbereich.") + "\n\nZIP-REGEL: create_zip packt ausschließlich Inhalte des aktuellen Chat-Arbeitsbereichs. Wenn der Nutzer eine ZIP des links ausgewählten Projektordners verlangt, verwende create_project_zip mit relativen Pfaden innerhalb dieses Projektordners (für das ganze Projekt paths=[\".\"]). Dafür müssen Projekt-Lese- und Schreibfreigabe aktiv sein. Behaupte nicht, der ausgewählte Projektordner könne nicht gepackt werden, wenn create_project_zip verfügbar und freigegeben ist.\n\nWICHTIG ZUM SPEICHERORT: Der aktuelle Arbeitsbereich lautet exakt: " + str(tools.root) + ". Nach JEDEM Erstellen, Kopieren, Entpacken oder Erzeugen eines ZIP/DEB musst du dem Nutzer den vollständigen absoluten Dateipfad nennen. Bei mehreren Dateien alle relevanten absoluten Pfade aufführen. Behaupte niemals, eine Datei sei automatisch im Download-Ordner.\n\nDu hast Werkzeuge für echte Dateiarbeit. Entscheide anhand der aktuellen Nutzeranweisung in natürlicher Sprache, ob Dateiarbeit ausdrücklich beauftragt wurde. Eine normale Nachricht, ein bloßer Klick auf Senden, ein Anhang allein oder ein früherer, bereits abgeschlossener Auftrag sind KEINE Erlaubnis. Eine eindeutige Fortsetzung eines noch offenen, ausdrücklich beauftragten Auftrags ist dagegen weiterhin freigegeben. Rufe Dateiwerkzeuge nur auf, wenn die aktuelle Nachricht oder die eindeutige Fortsetzung eines noch offenen ausdrücklich beauftragten Auftrags verlangt, Anhänge zu untersuchen, Dateien/Code zu erstellen oder zu ändern, ein Projekt vorzubereiten oder eine ZIP zu erzeugen. Verwende keine starren Schlüsselwortregeln; verstehe den Sinn des aktuellen Auftrags. Wenn ein neu erstelltes Shell-Skript wie build_deb.sh vor dem Packen ausführbar sein muss, verwende set_workspace_executable auf die konkrete .sh-Datei im Arbeitsbereich, bevor du create_zip oder prepare_github_release ausführst; ändere Rechte nur im Rahmen des ausdrücklich angeforderten Projektauftrags und prüfe danach die ZIP-Metadaten. Wenn kein solcher Auftrag vorliegt, antworte normal im Chat und erstelle nichts. Bei einem konkreten Projekt-/GitHub-Archivauftrag: Rufe zuerst list_attachments auf, extrahiere angehängte Quell-ZIPs mit extract_attachment_to_workspace und kopiere angehängte DEBs mit copy_attachment_to_workspace. Untersuche danach die vollständigen extrahierten Dateien und Paketdateien. Erstelle ein vollständiges Repository mit dem echten Quellcode und allen erforderlichen Dateien; schreibe NICHT nur README/CHANGELOG/Lizenz und behaupte dann, das Projekt sei fertig. Wenn Quellcode im ausgewählten Projektordner geändert wurde und der Nutzer ein lauffähiges Paket verlangt, nutze bei aktivierter separater Build-Freigabe run_project_command für Syntaxprüfungen und zum Ausführen eines freigegebenen Buildskripts direkt im Projektordner; baue DEBs nicht nur durch Kopieren eines alten Pakets. Ein nicht ausführbares Buildskript darfst du nur mit set_project_script_executable ausführbar machen, wenn die Build-Freigabe aktiv ist. Führe Arbeitsbereich-Befehle nur im Arbeitsbereich aus. Für den ausdrücklich ausgewählten lokalen Projektordner verwende run_project_command; dieses Werkzeug benötigt die separate Build-Ausführungsfreigabe. Es kann freigegebene Python-Dateien starten, C++-Dateien mit g++/c++ prüfen und kompilieren, CMake-Projekte konfigurieren und bauen, Programme mit GDB im Batch-Modus ausführen/debuggen sowie ausführbare Dateien aus dem Projekt starten. Verwende relative Projektpfade, starte niemals Dateien außerhalb des ausgewählten Projektordners und erkläre vor dem Programmstart, wenn ein Programm externe oder systemweite Änderungen vornehmen könnte. Melde fehlgeschlagene Tests ehrlich. Für ausdrücklich angeforderte Funktionsprüfungen darfst du `python3 Projekt/main.py` verwenden, sofern die .py-Datei im Arbeitsbereich liegt; `dpkg-deb --build --root-owner-group` ist ebenfalls für Build-Ordner innerhalb des Arbeitsbereichs erlaubt. Packe niemals den gesamten Chat-Arbeitsbereich als äußeres ZIP. Gib ausschließlich die beiden Dateien aus `release/` getrennt aus und nenne ihre exakten Pfade. Bei selbst erzeugten Debian-Buildskripten verwende `dpkg-deb --build --root-owner-group` (sofern vom installierten dpkg-deb unterstützt), damit Eigentümer und Gruppe im Paket reproduzierbar root:root sind; behandle Warnungen nicht als erfolgreich bereinigt, sondern prüfe den Build-Ausgang. Der dedizierte release/-Ordner muss nach erfolgreicher Release-Vorbereitung nur die aktuelle GitHub-ZIP und das frisch aus genau dieser ZIP gebaute DEB enthalten; gib diese zwei Dateien getrennt aus, nicht den kompletten Arbeitsordner. Erstelle eine ZIP mit dem kompletten Repository einschließlich Quellcode und bei explizitem Wunsch auch die originale oder neu gebaute DEB-Datei. Wenn der Nutzer ein GitHub-fertiges Projekt mit sauberer ZIP und neu gebautem DEB verlangt, nutze nach den notwendigen Codeänderungen bevorzugt prepare_github_release; gib niemals alte DEBs als neu gebaut aus und prüfe die zurückgegebenen success-/Versions-/Pfadangaben. Prüfe vor Abschluss mit list_workspace_files, dass Quellcode, README, CHANGELOG und gewünschte Pakete wirklich enthalten sind. Sage niemals, etwas erstellt zu haben, bevor das Werkzeug Erfolg gemeldet hat. Nenne am Ende die vollständigen Ausgabe-Pfade. GitHub-Upload/Push ist nicht verfügbar; erstelle stattdessen ein GitHub-fertiges lokales Projekt/ZIP, wenn das gemeint ist."
+    explicit_build_request = _explicit_project_build_request(messages)
+    if explicit_build_request and not tools.project_root:
+        instructions += "\n\nVERBINDLICHER BUILD-/START-ABLAUF IM CHAT-ARBEITSBEREICH: Es ist kein ausgewählter lokaler Projektordner aktiv; neu erstellte Projektdateien liegen deshalb im aktuellen Chat-Arbeitsbereich " + str(tools.root) + ". Wenn der Nutzer ausdrücklich Build und Start verlangt, MUSST du nach dem Schreiben der Dateien run_workspace_command verwenden und darfst nicht nur Terminalbefehle nennen. Suche mit list_workspace_files nach der Projekt-CMakeLists.txt und verwende ihren relativen Unterordner als CMake-Quellordner, z.B. cmake -S LunaRechner -B LunaRechner/build; danach nur bei Erfolg cmake --build LunaRechner/build; danach nur bei Erfolg das Projektprogramm mit './LunaRechner/build/PROGRAMM' starten. Bei Konsolenprogrammen lies den Quellcode und übergib eine kurze passende Testeingabe über stdin. Alle Pfade müssen relativ und innerhalb des Chat-Arbeitsbereichs bleiben. Berichte Returncodes und echte Ausgabe; bei Fehlern nicht behaupten, das Programm sei gestartet."
+
+    explicit_build_request = _explicit_project_build_request(messages)
+    if explicit_build_request and tools.project_root:
+        instructions += "\n\nVERBINDLICHER BUILD-/START-ABLAUF FÜR DIESEN AUFTRAG: Der Nutzer hat ausdrücklich verlangt, das Projekt bauen und starten zu können. Wenn Projektdateien erfolgreich angelegt wurden und die Build-Freigabe aktiv ist, MUSST du run_project_command tatsächlich aufrufen; Terminalbefehle nur aufzuschreiben ist KEINE Erfüllung. Bei CMake-Projekten mit CMakeLists.txt im ausgewählten Projektstamm: 1) run_project_command command='cmake -S . -B build'; 2) nur bei Erfolg command='cmake --build build'; 3) nur bei Erfolg das konkrete erzeugte ausführbare Programm innerhalb des Projekts starten, z.B. './build/LunaRechner'. Lies bei Bedarf CMakeLists.txt, um den tatsächlichen Programmnamen festzustellen. Bei interaktiven Konsolenprogrammen lies main.cpp und gib über das optionale stdin-Argument eine kurze, passende Testeingabe mit, damit das Programm einen sinnvollen Durchlauf absolviert und nicht nur EOF erhält. Jeder Schritt muss auf dem vorherigen Erfolg beruhen. Berichte echte stdout/stderr und Returncodes. Wenn die Build-Freigabe NICHT aktiv ist, führe nichts aus und sage ausdrücklich, dass die Checkbox 'KI darf Build-Befehle ausführen' im Hauptfenster für genau diesen ausgewählten Projektordner aktiviert werden muss; gib keine Terminalbefehle als Ersatz aus."
     
 
     active_bilingual_task = _bilingualization_task_context(messages)
@@ -1723,6 +2017,8 @@ Der Nutzer hat bereits die vollständige Zweisprachigkeit einer bestehenden App 
     successful_project_writes = 0
     project_audit_after_write = False
     bilingual_followthrough_nudges = 0
+    project_build_command_results = []
+    build_followthrough_nudges = 0
     for _ in range(80):
         data=_response_json(url,token,model,conversation,use_web)
         output=data.get("output",[])
@@ -1767,14 +2063,48 @@ Der Nutzer hat bereits die vollständige Zweisprachigkeit einer bestehenden App 
                     conversation.append({"role":"assistant","content":final_text})
                     conversation.append({"role":"user","content":nudge})
                     continue
+            if explicit_build_request and build_followthrough_nudges < 3:
+                build_root = tools.project_root if tools.project_root else tools.root
+                cmake_candidates = [build_root / "CMakeLists.txt"]
+                if not cmake_candidates[0].is_file() and build_root.exists():
+                    cmake_candidates = sorted(p for p in build_root.rglob("CMakeLists.txt") if not any(part in ("build","dist",".git","__pycache__") for part in p.parts))[:1]
+                cmake_root = cmake_candidates[0] if cmake_candidates and cmake_candidates[0].is_file() else None
+                if cmake_root:
+                    successful = [entry for entry in project_build_command_results if entry.get("success")]
+                    commands = [entry.get("command", "") for entry in successful]
+                    has_configure = any(cmd.startswith("cmake -S ") for cmd in commands)
+                    has_build = any(cmd.startswith("cmake --build ") for cmd in commands)
+                    has_run = any(entry.get("command", "").startswith("./") for entry in successful)
+                    source_rel = cmake_root.parent.relative_to(build_root).as_posix() or "."
+                    build_rel = (Path(source_rel) / "build").as_posix() if source_rel != "." else "build"
+                    runner = "run_project_command" if tools.project_root else "run_workspace_command"
+                    if tools.project_root and not tools.project_exec_enabled:
+                        nudge = ("Der Nutzer hat ausdrücklich Build und Start verlangt, aber die erforderliche Build-Freigabe ist nicht aktiv. Führe KEINEN Befehl aus. Bitte ihn konkret, im Hauptfenster 'KI darf Build-Befehle ausführen' für den aktuell ausgewählten Projektordner einzuschalten. Gib keine Terminalbefehle als Ersatz aus und behaupte nicht, gebaut oder gestartet zu haben.")
+                    elif not has_configure:
+                        nudge = f"Du hast den ausdrücklich verlangten Build noch nicht ausgeführt. Rufe jetzt {runner} mit command='cmake -S {source_rel} -B {build_rel}' auf. Wenn der Aufruf fehlschlägt, untersuche die echte Fehlermeldung; gib keine bloße Anleitung aus."
+                    elif not has_build:
+                        nudge = f"CMake-Konfiguration war erfolgreich, aber der eigentliche Build fehlt. Rufe jetzt {runner} mit command='cmake --build {build_rel}' auf. Nur bei Erfolg fortfahren; keine bloßen Terminalanweisungen ausgeben."
+                    elif not has_run:
+                        nudge = (f"Der Build war erfolgreich, aber der Programmstart fehlt. Lies die CMakeLists.txt/main.cpp, ermittle den ausführbaren Programmnamen und rufe {runner} mit './{build_rel}/PROGRAMM' auf. Bei einem Konsolenprogramm übergib eine passende kurze Testeingabe mit stdin. Starte nur das Projektprogramm innerhalb des freigegebenen Arbeitsbereichs.")
+                    else:
+                        nudge = ""
+                    if nudge:
+                        build_followthrough_nudges += 1
+                        conversation.append({"role":"assistant","content":final_text})
+                        conversation.append({"role":"user","content":nudge})
+                        continue
             return final_text
         for call in calls:
             name=call.get("name","")
             try:
                 args=json.loads(call.get("arguments") or "{}")
                 result=tools.call(name,args)
+                if name in ("run_project_command", "run_workspace_command"):
+                    project_build_command_results.append({"command":str(args.get("command", "")),"success":bool(isinstance(result,dict) and result.get("success"))})
             except Exception as e:
                 result={"error":str(e)}
+                if name in ("run_project_command", "run_workspace_command"):
+                    project_build_command_results.append({"command":str(args.get("command", "")),"success":False,"error":str(e)})
             if isinstance(result,dict) and not result.get("error"):
                 if name in ("patch_project_file","write_project_file") and (result.get("patched") or result.get("saved")):
                     successful_project_writes += 1
@@ -2384,10 +2714,11 @@ class ImageGenerationDialog(QDialog):
 
 
 class LineNumberArea(QWidget):
-    """Schmaler Rand mit Zeilennummern für den Projekteditor."""
+    """Zeilennummernrand mit anklickbaren Breakpoint-Markierungen."""
     def __init__(self, editor):
         super().__init__(editor)
         self.editor = editor
+        self.setCursor(Qt.PointingHandCursor)
 
     def sizeHint(self):
         return QSize(self.editor.line_number_area_width(), 0)
@@ -2395,12 +2726,21 @@ class LineNumberArea(QWidget):
     def paintEvent(self, event):
         self.editor.line_number_area_paint_event(event)
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.editor.toggle_breakpoint_at_y(event.position().y())
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
 
 class ProjectCodeEditor(QPlainTextEdit):
     """Texteditor mit Zeilennummern und Hervorhebung der aktuellen Zeile."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.line_number_area = LineNumberArea(self)
+        self.breakpoints = set()
+        self.breakpoint_toggled_callback = None
         self.blockCountChanged.connect(self.update_line_number_area_width)
         self.updateRequest.connect(self.update_line_number_area)
         self.cursorPositionChanged.connect(self.highlight_current_line)
@@ -2436,13 +2776,48 @@ class ProjectCodeEditor(QPlainTextEdit):
         bottom = top + int(self.blockBoundingRect(block).height())
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
+                if number + 1 in self.breakpoints:
+                    painter.setPen(QColor("#ff4d5e"))
+                    painter.setBrush(QColor("#ff4d5e"))
+                    radius = 4
+                    painter.drawEllipse(2, top + max(1, (self.fontMetrics().height()-radius*2)//2), radius*2, radius*2)
                 painter.setPen(self.palette().mid().color())
-                painter.drawText(0, top, self.line_number_area.width()-5,
+                painter.drawText(12, top, self.line_number_area.width()-16,
                                  self.fontMetrics().height(), Qt.AlignRight, str(number + 1))
             block = block.next()
             top = bottom
             bottom = top + int(self.blockBoundingRect(block).height())
             number += 1
+
+    def toggle_breakpoint_at_y(self, y):
+        block = self.firstVisibleBlock()
+        top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()
+        while block.isValid():
+            bottom = top + self.blockBoundingRect(block).height()
+            if top <= y < bottom:
+                line = block.blockNumber() + 1
+                enabled = line not in self.breakpoints
+                if enabled:
+                    self.breakpoints.add(line)
+                else:
+                    self.breakpoints.remove(line)
+                self.line_number_area.update()
+                if callable(self.breakpoint_toggled_callback):
+                    self.breakpoint_toggled_callback(line, enabled)
+                return
+            block = block.next()
+            top = bottom
+
+    def set_breakpoint(self, line, enabled=True):
+        if enabled:
+            self.breakpoints.add(int(line))
+        else:
+            self.breakpoints.discard(int(line))
+        self.line_number_area.update()
+
+    def clear_breakpoints(self):
+        self.breakpoints.clear()
+        self.line_number_area.update()
 
     def highlight_current_line(self):
         selections = []
@@ -2485,6 +2860,32 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(match.start(), match.end()-match.start(), string_fmt)
 
 
+class CppSyntaxHighlighter(QSyntaxHighlighter):
+    """Leichte C/C++-Syntaxhervorhebung ohne externe Abhängigkeiten."""
+    def __init__(self, document):
+        super().__init__(document)
+        self.rules=[]
+        for pattern,color,bold in (
+            (r"\b(alignas|alignof|asm|auto|bool|break|case|catch|char|class|const|constexpr|continue|default|delete|do|double|else|enum|explicit|extern|false|float|for|friend|goto|if|inline|int|long|namespace|new|nullptr|operator|private|protected|public|register|return|short|signed|sizeof|static|struct|switch|template|this|throw|true|try|typedef|typename|union|unsigned|using|virtual|void|volatile|while|override|final|noexcept)\b","#c792ea",True),
+            (r"\b(std|cout|cin|cerr|string|vector|map|set|unique_ptr|shared_ptr|size_t)\b","#82aaff",False),
+            (r"\b[0-9]+(?:\.[0-9]+)?[uUlLfF]*\b","#f78c6c",False),
+            (r"#\s*\w+","#ffcb6b",True),
+            (r"\b[A-Z][A-Z0-9_]{2,}\b","#ffcb6b",False),
+        ):
+            fmt=QTextCharFormat(); fmt.setForeground(QColor(color))
+            if bold: fmt.setFontWeight(QFont.Bold)
+            self.rules.append((re.compile(pattern),fmt))
+    def highlightBlock(self,text):
+        for pattern,fmt in self.rules:
+            for match in pattern.finditer(text): self.setFormat(match.start(),match.end()-match.start(),fmt)
+        comment=QTextCharFormat(); comment.setForeground(QColor("#697b8c"))
+        for pattern in (r"//[^\n]*",r"/\*.*?\*/"):
+            for match in re.finditer(pattern,text): self.setFormat(match.start(),match.end()-match.start(),comment)
+        string=QTextCharFormat(); string.setForeground(QColor("#c3e88d"))
+        for pattern in (r"'(?:\\.|[^'\\])*'",r'"(?:\\.|[^"\\])*"'):
+            for match in re.finditer(pattern,text): self.setFormat(match.start(),match.end()-match.start(),string)
+
+
 class JsonSyntaxHighlighter(QSyntaxHighlighter):
     """Syntaxhervorhebung für JSON-Dateien."""
     def __init__(self, document):
@@ -2508,14 +2909,49 @@ class JsonSyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(match.start(),match.end()-match.start(),fmt)
 
 
+class DiagnosticConsole(QPlainTextEdit):
+    errorActivated = Signal(str)
+
+    def mouseDoubleClickEvent(self, event):
+        cursor = self.cursorForPosition(event.position().toPoint())
+        line = cursor.block().text()
+        if re.search(r":\\d+:(?:\\d+:)?\\s*(?:fatal error|error|warning|note):|File \".+?\", line \\d+", line):
+            self.errorActivated.emit(line)
+        super().mouseDoubleClickEvent(event)
+
+
 class ProjectFileDialog(QDialog):
     """Dateimanager für einen ausdrücklich ausgewählten Projektordner."""
-    def __init__(self, project_dir, parent=None):
+    def __init__(self, project_dir, parent=None, execution_enabled=False):
         super().__init__(parent)
         self.root=Path(project_dir).expanduser().resolve()
         self.current_file=None
+        self.execution_enabled=bool(execution_enabled)
+        self.ide_settings=QSettings("Luna", "LunaGPT")
+        self.ide_settings.beginGroup("ProjectIDE/"+uuid.uuid5(uuid.NAMESPACE_URL,str(self.root)).hex)
+        self._process=None
+        self._pending_action=None
+        self._built_executable=None
+        self._gdb_token=0
+        self._gdb_pending={}
+        self._gdb_buffer=""
+        self._gdb_var_objects={}
+        self._gdb_pty_master=None
+        self._gdb_pty_slave=None
+        self._gdb_pty_notifier=None
+        self._cmake_target_artifacts={}
+        self._cpp_entrypoints=[]
         self.setWindowTitle(tr("LunaGPT – lokaler Projektmanager"))
-        self.resize(1100,720)
+        # Keep the manager inside the usable desktop area. The IDE controls
+        # below are scrollable so their size hints cannot push the dialog
+        # beyond the bottom edge on smaller displays.
+        screen = self.screen()
+        available = screen.availableGeometry() if screen else None
+        target_height = min(820, max(520, available.height() - 48)) if available else 720
+        target_width = min(1400, max(980, available.width() - 48)) if available else 1100
+        self.resize(target_width, target_height)
+        if available:
+            self.setMaximumHeight(max(480, available.height() - 24))
         layout=QVBoxLayout(self)
         header=QHBoxLayout()
         path_label=QLabel(tr("Projektordner: ") + str(self.root))
@@ -2531,6 +2967,10 @@ class ProjectFileDialog(QDialog):
         open_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.root))))
         header.addWidget(open_folder)
         layout.addLayout(header)
+        self.active_project_label=QLabel(tr("Aktives Projekt: wird erkannt …"))
+        self.active_project_label.setWordWrap(True)
+        self.active_project_label.setStyleSheet("color: #9aa8c7; padding: 2px 4px;")
+        layout.addWidget(self.active_project_label)
         split=QSplitter(Qt.Horizontal)
         self.model=QFileSystemModel(self)
         self.model.setFilter(QDir.AllEntries | QDir.NoDotAndDotDot | QDir.Hidden)
@@ -2541,6 +2981,9 @@ class ProjectFileDialog(QDialog):
         for column in (1,2,3): self.tree.hideColumn(column)
         self.tree.setMinimumWidth(280)
         self.tree.doubleClicked.connect(self.open_selected)
+        self._selected_tree_path = None
+        self.tree.clicked.connect(self._remember_selected_path)
+        self._update_active_project_label()
         split.addWidget(self.tree)
         editor_box=QWidget(); editor_layout=QVBoxLayout(editor_box); editor_layout.setContentsMargins(8,0,0,0)
         self.file_label=QLabel(tr("Datei auswählen, um sie anzuzeigen"))
@@ -2557,6 +3000,7 @@ class ProjectFileDialog(QDialog):
         editor_layout.addLayout(search_row)
         self.editor_stack=QStackedWidget()
         self.editor=ProjectCodeEditor()
+        self.editor.breakpoint_toggled_callback = self._editor_breakpoint_toggled
         self.editor.setPlaceholderText(tr("Textdateien können hier angezeigt und bearbeitet werden."))
         self.editor.setContextMenuPolicy(Qt.CustomContextMenu)
         self.editor.customContextMenuRequested.connect(self.editor_context_menu)
@@ -2569,6 +3013,7 @@ class ProjectFileDialog(QDialog):
         self.editor_stack.addWidget(self.image_preview)
         editor_layout.addWidget(self.editor_stack,1)
         self.python_highlighter=PythonSyntaxHighlighter(self.editor.document())
+        self.cpp_highlighter=CppSyntaxHighlighter(None)
         self.json_highlighter=None
         self._active_highlighter=self.python_highlighter
         self.editor.document().modificationChanged.connect(self.update_file_label)
@@ -2593,10 +3038,1253 @@ class ProjectFileDialog(QDialog):
         controls.addWidget(self.diff_button)
         controls.addStretch()
         editor_layout.addLayout(controls)
-        split.addWidget(editor_box)
+        ide_row=QHBoxLayout()
+        self.build_button=QPushButton(tr("Bauen"))
+        self.build_button.setToolTip(tr("Python-Syntax prüfen, C++ kompilieren oder CMake-Projekt bauen."))
+        self.build_button.clicked.connect(self.build_current)
+        self.run_button=QPushButton(tr("Starten"))
+        self.run_button.clicked.connect(self.run_current)
+        self.debug_button=QPushButton(tr("Debuggen (GDB)"))
+        self.debug_button.clicked.connect(self.debug_current)
+        self.stop_button=QPushButton(tr("Stoppen"))
+        self.stop_button.setEnabled(False)
+        self.stop_button.clicked.connect(self.stop_process)
+        for button in (self.build_button,self.run_button,self.debug_button,self.stop_button):
+            button.setEnabled(self.execution_enabled)
+            ide_row.addWidget(button)
+        ide_row.addStretch()
+        editor_layout.addLayout(ide_row)
+        project_options=QHBoxLayout()
+        project_options.addWidget(QLabel(tr("CMake-Ziel:")))
+        self.cmake_target_combo=QComboBox()
+        self.cmake_target_combo.addItem(tr("Automatisch / alle Ziele"), "")
+        self.cmake_target_combo.setMinimumWidth(150)
+        project_options.addWidget(self.cmake_target_combo)
+        project_options.addWidget(QLabel(tr("Build-Typ:")))
+        self.cmake_build_type=QComboBox()
+        for build_type in ("Debug", "Release", "RelWithDebInfo", "MinSizeRel"):
+            self.cmake_build_type.addItem(build_type, build_type)
+        project_options.addWidget(self.cmake_build_type)
+        project_options.addWidget(QLabel(tr("C++-Standard:")))
+        self.cpp_standard_combo=QComboBox()
+        for standard in ("C++11", "C++14", "C++17", "C++20", "C++23", "C++26"):
+            self.cpp_standard_combo.addItem(standard, standard.lower())
+        project_options.addWidget(self.cpp_standard_combo)
+        editor_layout.addLayout(project_options)
+        cmake_options=QHBoxLayout()
+        cmake_options.addWidget(QLabel(tr("CMake-Generator:")))
+        self.cmake_generator_combo=QComboBox()
+        self.cmake_generator_combo.addItem(tr("CMake-Standard"), "")
+        for generator in ("Unix Makefiles", "Ninja", "Ninja Multi-Config"):
+            if generator=="Unix Makefiles" or shutil.which("ninja"):
+                self.cmake_generator_combo.addItem(generator,generator)
+        cmake_options.addWidget(self.cmake_generator_combo)
+        cmake_options.addWidget(QLabel(tr("Build-Ordner:")))
+        self.cmake_build_dir_input=QLineEdit()
+        self.cmake_build_dir_input.setPlaceholderText("build")
+        cmake_options.addWidget(self.cmake_build_dir_input,1)
+        self.toolchain_button=QPushButton(tr("Toolchain …"))
+        self.toolchain_button.clicked.connect(self.choose_cmake_toolchain)
+        cmake_options.addWidget(self.toolchain_button)
+        editor_layout.addLayout(cmake_options)
+        compiler_options=QHBoxLayout()
+        compiler_options.addWidget(QLabel(tr("C-Compiler:")))
+        self.cmake_c_compiler_input=QLineEdit()
+        self.cmake_c_compiler_input.setPlaceholderText(tr("Standard-Compiler"))
+        compiler_options.addWidget(self.cmake_c_compiler_input)
+        compiler_options.addWidget(QLabel(tr("C++-Compiler:")))
+        self.cmake_cxx_compiler_input=QLineEdit()
+        self.cmake_cxx_compiler_input.setPlaceholderText(tr("Standard-Compiler"))
+        compiler_options.addWidget(self.cmake_cxx_compiler_input)
+        editor_layout.addLayout(compiler_options)
+        cpp_entry_row=QHBoxLayout()
+        cpp_entry_row.addWidget(QLabel(tr("C++-Einstieg:")))
+        self.cpp_entry_combo=QComboBox()
+        self.cpp_entry_combo.setMinimumWidth(220)
+        cpp_entry_row.addWidget(self.cpp_entry_combo,1)
+        cpp_entry_row.addWidget(QLabel(tr("Programmargumente:")))
+        self.program_args_input=QLineEdit()
+        self.program_args_input.setPlaceholderText(tr("z. B. --input datei.txt"))
+        cpp_entry_row.addWidget(self.program_args_input,2)
+        editor_layout.addLayout(cpp_entry_row)
+        library_row=QHBoxLayout()
+        self.library_button=QPushButton(tr("C++-Bibliotheken verwalten …"))
+        self.library_button.clicked.connect(self.manage_cpp_libraries)
+        library_row.addWidget(self.library_button)
+        self.library_summary=QLabel(tr("Keine pkg-config-Bibliotheken ausgewählt"))
+        library_row.addWidget(self.library_summary,1)
+        editor_layout.addLayout(library_row)
+        self.cpp_libraries=list(self.ide_settings.value("cpp_libraries", [], type=list))
+        self.library_summary.setText(", ".join(self.cpp_libraries) if self.cpp_libraries else tr("Keine pkg-config-Bibliotheken ausgewählt"))
+        self.cmake_build_type.setCurrentIndex(max(0,self.cmake_build_type.findData(self.ide_settings.value("cmake_build_type", "Debug"))))
+        self.cpp_standard_combo.setCurrentIndex(max(0,self.cpp_standard_combo.findData(self.ide_settings.value("cpp_standard", "c++17"))))
+        self.cmake_generator_combo.setCurrentIndex(max(0,self.cmake_generator_combo.findData(self.ide_settings.value("cmake_generator", ""))))
+        self.cmake_build_dir_input.setText(self.ide_settings.value("cmake_build_dir", "build"))
+        self.cmake_c_compiler_input.setText(self.ide_settings.value("cmake_c_compiler", ""))
+        self.cmake_cxx_compiler_input.setText(self.ide_settings.value("cmake_cxx_compiler", ""))
+        self.cmake_toolchain=self.ide_settings.value("cmake_toolchain", "")
+        self._saved_cmake_target=self.ide_settings.value("cmake_target", "")
+        if self.cmake_toolchain:
+            self.toolchain_button.setText(Path(self.cmake_toolchain).name)
+            self.toolchain_button.setToolTip(self.cmake_toolchain)
+        self.program_args_input.setText(self.ide_settings.value("program_arguments", ""))
+        self.cmake_build_type.currentIndexChanged.connect(lambda *_: self._save_ide_setting("cmake_build_type",self.cmake_build_type.currentData()))
+        self.cpp_standard_combo.currentIndexChanged.connect(lambda *_: self._save_ide_setting("cpp_standard",self.cpp_standard_combo.currentData()))
+        self.cmake_generator_combo.currentIndexChanged.connect(lambda *_: self._save_ide_setting("cmake_generator",self.cmake_generator_combo.currentData()))
+        self.cmake_build_dir_input.textChanged.connect(lambda value: self._save_ide_setting("cmake_build_dir",value))
+        self.cmake_c_compiler_input.textChanged.connect(lambda value: self._save_ide_setting("cmake_c_compiler",value))
+        self.cmake_cxx_compiler_input.textChanged.connect(lambda value: self._save_ide_setting("cmake_cxx_compiler",value))
+        self.program_args_input.textChanged.connect(lambda value: self._save_ide_setting("program_arguments",value))
+        self.cpp_entry_combo.currentIndexChanged.connect(lambda *_: self._save_ide_setting("cpp_entrypoint",self.cpp_entry_combo.currentData() or ""))
+        self.cmake_target_combo.currentIndexChanged.connect(lambda *_: self._save_ide_setting("cmake_target",self.cmake_target_combo.currentData() or ""))
+        self._refresh_cpp_entrypoints()
+        debugger_row=QHBoxLayout()
+        self.breakpoint_button=QPushButton(tr("Haltepunkt hier"))
+        self.breakpoint_button.clicked.connect(self.debug_breakpoint_here)
+        self.continue_button=QPushButton(tr("Fortsetzen"))
+        self.continue_button.clicked.connect(lambda: self.send_debug_command("continue"))
+        self.step_button=QPushButton(tr("Einzelschritt"))
+        self.step_button.clicked.connect(lambda: self.send_debug_command("step"))
+        self.next_button=QPushButton(tr("Nächste Zeile"))
+        self.next_button.clicked.connect(lambda: self.send_debug_command("next"))
+        self.locals_button=QPushButton(tr("Lokale Variablen"))
+        self.locals_button.clicked.connect(self.debug_show_variables)
+        self.stack_button=QPushButton(tr("Aufrufstapel"))
+        self.stack_button.clicked.connect(lambda: self.send_debug_command("backtrace"))
+        self.print_button=QPushButton(tr("Ausdruck prüfen"))
+        self.print_button.clicked.connect(self.debug_print_expression)
+        self.watch_button=QPushButton(tr("Überwachen"))
+        self.watch_button.clicked.connect(self.debug_watch_expression)
+        self.clear_watch_button=QPushButton(tr("Überwachung löschen"))
+        self.clear_watch_button.clicked.connect(self.debug_clear_watches)
+        self.debug_expression_input=QLineEdit()
+        self.debug_expression_input.setPlaceholderText(tr("Variablenname oder Ausdruck"))
+        for widget in (self.breakpoint_button,self.continue_button,self.step_button,self.next_button,self.locals_button,self.stack_button,self.debug_expression_input,self.print_button,self.watch_button,self.clear_watch_button):
+            debugger_row.addWidget(widget)
+        editor_layout.addLayout(debugger_row)
+        debugger_extra_row=QHBoxLayout()
+        self.memory_button=QPushButton(tr("Speicher prüfen (16 Byte)"))
+        self.memory_button.clicked.connect(self.debug_examine_memory)
+        self.registers_button=QPushButton(tr("CPU-Register anzeigen"))
+        self.registers_button.clicked.connect(self.debug_show_cpu_registers)
+        self.breakpoints_button=QPushButton(tr("Haltepunkte anzeigen"))
+        self.breakpoints_button.clicked.connect(lambda: self.send_debug_command("breakpoints"))
+        self.clear_breakpoints_button=QPushButton(tr("Alle Haltepunkte löschen"))
+        self.clear_breakpoints_button.clicked.connect(self.debug_clear_breakpoints)
+        debugger_extra_row.addWidget(self.memory_button)
+        debugger_extra_row.addWidget(self.registers_button)
+        debugger_extra_row.addWidget(self.breakpoints_button)
+        debugger_extra_row.addWidget(self.clear_breakpoints_button)
+        debugger_extra_row.addStretch()
+        editor_layout.addLayout(debugger_extra_row)
+        self.debug_inspector=QTreeWidget()
+        self.debug_inspector.setColumnCount(2)
+        self.debug_inspector.setHeaderLabels([tr("Variable / Ausdruck"),tr("Wert")])
+        self.debug_inspector.setMinimumHeight(110)
+        self.debug_inspector.setAlternatingRowColors(True)
+        self.debug_inspector.setRootIsDecorated(False)
+        self.debug_inspector.setToolTip(tr("Hier erscheinen erkannte Variablen, Funktionsargumente und überwachte Ausdrücke. Vollständige GDB-Ausgabe steht in der Konsole."))
+        self._debug_variable_items={}
+        self.debug_output_view=QPlainTextEdit()
+        self.debug_output_view.setReadOnly(True)
+        self.debug_output_view.setMaximumBlockCount(2000)
+        self.debug_output_view.setPlaceholderText(tr("Speicherauszüge und CPU-Register erscheinen hier."))
+        self.debug_tabs=QTabWidget()
+        self.debug_tabs.addTab(self.debug_inspector,tr("Variablen"))
+        self.debug_tabs.addTab(self.debug_output_view,tr("Speicher / Register"))
+        editor_layout.addWidget(self.debug_tabs)
+        self._set_debug_controls(False)
+        self.console_label=QLabel(tr("Konsole / Programmausgabe"))
+        editor_layout.addWidget(self.console_label)
+        self.console=DiagnosticConsole()
+        self.console.errorActivated.connect(lambda line: self.jump_to_build_error(line))
+        self.console.setReadOnly(True)
+        self.console.setMaximumBlockCount(4000)
+        self.console.setMinimumHeight(110)
+        self.console.setPlaceholderText(tr("Build-Ausgabe, Programm-Ausgabe und Fehlermeldungen erscheinen hier."))
+        editor_layout.addWidget(self.console)
+        diagnostic_row=QHBoxLayout()
+        self.jump_error_button=QPushButton(tr("Zum Fehler springen"))
+        self.jump_error_button.setToolTip(tr("Öffnet die im Compiler- oder Python-Fehler genannte Datei und springt zur Zeile."))
+        self.jump_error_button.setEnabled(False)
+        self.jump_error_button.clicked.connect(self.jump_to_build_error)
+        diagnostic_row.addWidget(self.jump_error_button)
+        diagnostic_row.addStretch()
+        editor_layout.addLayout(diagnostic_row)
+        input_row=QHBoxLayout()
+        self.stdin_input=QLineEdit()
+        self.stdin_input.setPlaceholderText(tr("Befehlseingabe für laufendes Programm"))
+        self.stdin_input.returnPressed.connect(self.send_process_input)
+        self.stdin_input.setEnabled(False)
+        input_row.addWidget(self.stdin_input,1)
+        self.stdin_button=QPushButton(tr("Eingabe senden"))
+        self.stdin_button.setEnabled(False)
+        self.stdin_button.clicked.connect(self.send_process_input)
+        input_row.addWidget(self.stdin_button)
+        editor_layout.addLayout(input_row)
+        editor_scroll = QScrollArea()
+        editor_scroll.setWidgetResizable(True)
+        editor_scroll.setFrameShape(QFrame.NoFrame)
+        editor_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        editor_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        editor_scroll.setWidget(editor_box)
+        split.addWidget(editor_scroll)
         split.setStretchFactor(1,1)
         layout.addWidget(split,1)
         self.setStyleSheet("QTreeView { border:1px solid #7775; border-radius:6px; } QPlainTextEdit { font-family:monospace; }")
+
+    def _append_console(self, text):
+        if text:
+            self.console.moveCursor(QTextCursor.End)
+            self.console.insertPlainText(str(text))
+            self.console.moveCursor(QTextCursor.End)
+            console_text = self.console.toPlainText()
+            if re.search(r'(?m)^.+?:\d+:(?:\d+:)?\s*(?:fatal error|error|warning):|File ".+?", line \d+', console_text):
+                self.jump_error_button.setEnabled(True)
+
+    def jump_to_build_error(self, diagnostic_line=None):
+        """Springt zu einer von GCC/Clang oder Python gemeldeten Fehlerzeile."""
+        output = diagnostic_line if diagnostic_line is not None else self.console.toPlainText()
+        matches = []
+        cpp_pattern = re.compile(r"(?m)^(.+?):(\d+):(?:(\d+):)?\s*(?:fatal error|error|warning|note):")
+        py_pattern = re.compile(r'File "(.+?)", line (\d+)')
+        for match in cpp_pattern.finditer(output):
+            matches.append((match.start(), match.group(1).strip(), int(match.group(2)), int(match.group(3) or 1)))
+        for match in py_pattern.finditer(output):
+            matches.append((match.start(), match.group(1).strip(), int(match.group(2)), 1))
+        if not matches:
+            QMessageBox.information(self, tr("Keine Fehlerposition"), tr("In der Konsolenausgabe wurde keine passende Datei- und Zeilenangabe gefunden."))
+            return
+        _, raw_path, line, column = max(matches, key=lambda item: item[0])
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            candidate = (self.root / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+        if candidate != self.root and self.root not in candidate.parents:
+            QMessageBox.warning(self, tr("Außerhalb des Projekts"), tr("Die gemeldete Fehlerdatei liegt außerhalb des ausgewählten Projektordners."))
+            return
+        if not candidate.is_file():
+            QMessageBox.warning(self, tr("Datei nicht gefunden"), tr("Die in der Fehlermeldung genannte Datei wurde nicht gefunden: ") + str(candidate))
+            return
+        if self.current_file != candidate:
+            self.open_selected(self.model.index(str(candidate)))
+        if self.current_file != candidate or not self.editor.isEnabled():
+            return
+        block = self.editor.document().findBlockByNumber(max(0, line - 1))
+        if not block.isValid():
+            QMessageBox.warning(self, tr("Zeile nicht vorhanden"), tr("Die gemeldete Zeile liegt außerhalb der geöffneten Datei."))
+            return
+        cursor = QTextCursor(block)
+        cursor.movePosition(QTextCursor.Right, QTextCursor.MoveAnchor, max(0, column - 1))
+        self.editor.setTextCursor(cursor)
+        self.editor.centerCursor()
+        self.editor.setFocus()
+
+    def _save_ide_setting(self, key, value):
+        self.ide_settings.setValue(key, value)
+        self.ide_settings.sync()
+
+    def _remember_selected_path(self, index):
+        try:
+            path = Path(self.model.filePath(index)).resolve()
+            if self.root == path or self.root in path.parents:
+                self._selected_tree_path = path
+        except (OSError, RuntimeError, ValueError):
+            self._selected_tree_path = None
+        self._update_active_project_label()
+
+    def _update_active_project_label(self):
+        selected = self._selected_tree_path
+        if selected is not None and selected.exists():
+            anchor = selected if selected.is_dir() else selected.parent
+        elif self.current_file is not None:
+            anchor = self.current_file.parent
+        else:
+            anchor = self.root
+        project = None
+        project_type = None
+        for directory in (anchor, *anchor.parents):
+            if directory != self.root and self.root not in directory.parents:
+                break
+            if (directory / "CMakeLists.txt").is_file():
+                project, project_type = directory, "C++"
+                break
+            if (directory / "main.py").is_file() or (directory / "__main__.py").is_file():
+                project, project_type = directory, "Python"
+                break
+            if directory == self.root:
+                break
+        if project is None and selected is not None and selected.is_file():
+            if selected.suffix.lower() == ".py":
+                project, project_type = selected.parent, "Python"
+            elif selected.suffix.lower() in (".cpp", ".cc", ".cxx", ".c"):
+                project, project_type = selected.parent, "C++"
+        if project is None:
+            self.active_project_label.setText(tr("Aktives Projekt: kein Projektordner ausgewählt"))
+        else:
+            self.active_project_label.setText(
+                tr("Aktives Projekt: ") + project_type + " · " + project.name
+                + "  (" + str(project) + ")"
+            )
+
+    def _cmake_project_root(self):
+        """Return only the CMake project explicitly selected in this manager.
+
+        A workspace may contain several independent projects. Never guess a
+        nested project merely because it is the only CMakeLists.txt found.
+        """
+        anchors = []
+        # The tree selection represents the user's latest project choice and
+        # must take precedence over a source file left open in another project.
+        if self._selected_tree_path:
+            anchors.append(self._selected_tree_path.resolve())
+        if self.current_file:
+            anchors.append(self.current_file.resolve())
+        for anchor in anchors:
+            start = anchor if anchor.is_dir() else anchor.parent
+            for directory in (start, *start.parents):
+                if directory == self.root.parent:
+                    break
+                if (directory == self.root or self.root in directory.parents) and (directory / "CMakeLists.txt").is_file():
+                    return directory
+        # The manager root itself is a project only when it directly contains
+        # CMakeLists.txt. Do not recurse into child folders from a workspace root.
+        if (self.root / "CMakeLists.txt").is_file():
+            return self.root
+        return None
+
+    def _cmake_build_path(self):
+        raw=self.cmake_build_dir_input.text().strip() or "build"
+        rel=Path(raw)
+        if rel.is_absolute() or ".." in rel.parts or not rel.parts:
+            raise ValueError(tr("Der Build-Ordner muss ein relativer Pfad innerhalb des Projekts sein."))
+        project_root = self._cmake_project_root()
+        if project_root is None:
+            raise ValueError(tr("Kein eindeutiges CMake-Projekt gefunden. Wähle eine Datei im Projektordner aus."))
+        base=(project_root/rel).resolve()
+        if project_root not in base.parents:
+            raise ValueError(tr("Der Build-Ordner muss innerhalb des CMake-Projektordners liegen."))
+        generator=self.cmake_generator_combo.currentData() or "default"
+        generator_slug=re.sub(r"[^A-Za-z0-9_-]+","_",generator).strip("_") or "default"
+        build_type=str(self.cmake_build_type.currentData() or "Debug")
+        compiler_signature="|".join((self.cmake_c_compiler_input.text().strip(),self.cmake_cxx_compiler_input.text().strip(),self.cmake_toolchain.strip()))
+        compiler_slug=uuid.uuid5(uuid.NAMESPACE_URL,compiler_signature).hex[:8]
+        return base/generator_slug/build_type/compiler_slug
+
+    def choose_cmake_toolchain(self):
+        path,_=QFileDialog.getOpenFileName(self,tr("CMake-Toolchain-Datei auswählen"),str(self.root),tr("CMake-Dateien (*.cmake);;Alle Dateien (*)"))
+        if not path:
+            return
+        candidate=Path(path).expanduser().resolve()
+        if not candidate.is_file():
+            return
+        self.cmake_toolchain=str(candidate)
+        self._save_ide_setting("cmake_toolchain",self.cmake_toolchain)
+        self.toolchain_button.setText(candidate.name)
+        self.toolchain_button.setToolTip(str(candidate))
+
+    def _refresh_cpp_entrypoints(self):
+        current=self.cpp_entry_combo.currentData() or self.ide_settings.value("cpp_entrypoint", "")
+        scope = self._cmake_project_root()
+        if scope is None:
+            # If a source file/folder was explicitly selected, scope discovery
+            # to that folder. Otherwise inspect only files directly in root;
+            # do not pull entry points from unrelated workspace subprojects.
+            anchor = self.current_file or self._selected_tree_path
+            if anchor:
+                anchor = anchor.resolve()
+                scope = anchor if anchor.is_dir() else anchor.parent
+                if self.root not in scope.parents and scope != self.root:
+                    scope = self.root
+            else:
+                scope = self.root
+        found=[]
+        main_re=re.compile(r"\b(?:int|auto|signed|long\s+int)\s+main\s*\(")
+        try:
+            candidates = scope.rglob("*") if scope != self.root else (
+                item for item in self.root.iterdir() if item.is_file()
+            )
+            for candidate in candidates:
+                if not candidate.is_file() or candidate.suffix.lower() not in (".cpp",".cc",".cxx",".c"):
+                    continue
+                rel_parts=candidate.relative_to(self.root).parts
+                if any(part in ("build",".git",".venv","venv","__pycache__") for part in rel_parts):
+                    continue
+                try:
+                    content=candidate.read_text(encoding="utf-8",errors="replace")
+                except OSError:
+                    continue
+                searchable=content
+                if main_re.search(searchable):
+                    found.append(candidate.relative_to(self.root).as_posix())
+        except OSError:
+            pass
+        found.sort()
+        self._cpp_entrypoints=found
+        self.cpp_entry_combo.blockSignals(True)
+        self.cpp_entry_combo.clear()
+        if not found:
+            self.cpp_entry_combo.addItem(tr("Kein main()-Einstieg erkannt"),"")
+        else:
+            for rel in found:
+                self.cpp_entry_combo.addItem(rel,rel)
+            if current in found:
+                self.cpp_entry_combo.setCurrentIndex(found.index(current))
+            elif self.current_file:
+                rel=self.current_file.relative_to(self.root).as_posix() if self.root in self.current_file.parents else ""
+                if rel in found:
+                    self.cpp_entry_combo.setCurrentIndex(found.index(rel))
+        self.cpp_entry_combo.blockSignals(False)
+        # Clear stale workspace-wide selections instead of retaining a nested
+        # project's old main.cpp when the user returns to the workspace root.
+        self._save_ide_setting("cpp_entrypoint",self.cpp_entry_combo.currentData() or "")
+
+    def _mi_unescape(self, value):
+        result=[]; i=0
+        mapping={"\\":"\\", '"':'"', "n":"\n", "r":"\r", "t":"\t", "b":"\b", "f":"\f"}
+        while i<len(value):
+            if value[i]=="\\" and i+1<len(value):
+                code=value[i+1]
+                if code in mapping:
+                    result.append(mapping[code]); i+=2; continue
+                if code=="x" and i+3<len(value):
+                    try: result.append(chr(int(value[i+2:i+4],16))); i+=4; continue
+                    except ValueError: pass
+                result.append(code); i+=2; continue
+            result.append(value[i]); i+=1
+        return "".join(result)
+
+    def _parse_gdb_mi(self, source):
+        """Parse the recursive value grammar used by GDB/MI records."""
+        i=0
+        def quoted():
+            nonlocal i
+            i+=1; start=i; escaped=False
+            while i<len(source):
+                ch=source[i]
+                if ch=='"' and not escaped:
+                    raw=source[start:i]; i+=1
+                    return self._mi_unescape(raw)
+                if ch=="\\" and not escaped: escaped=True
+                else: escaped=False
+                i+=1
+            return self._mi_unescape(source[start:])
+        def value():
+            nonlocal i
+            if i>=len(source): return ""
+            if source[i]=='"': return quoted()
+            if source[i]=='{':
+                i+=1; result={}
+                while i<len(source) and source[i]!='}':
+                    key=identifier();
+                    if i<len(source) and source[i]=='=':
+                        i+=1; result[key]=value()
+                    if i<len(source) and source[i]==',': i+=1
+                    elif i<len(source) and source[i]!='}': break
+                if i<len(source) and source[i]=='}': i+=1
+                return result
+            if source[i]=='[':
+                i+=1; result=[]
+                while i<len(source) and source[i]!=']':
+                    start=i; key=identifier()
+                    if i<len(source) and source[i]=='=':
+                        i+=1; result.append({key:value()})
+                    else:
+                        i=start; result.append(value())
+                    if i<len(source) and source[i]==',': i+=1
+                    elif i<len(source) and source[i]!=']': break
+                if i<len(source) and source[i]==']': i+=1
+                return result
+            start=i
+            while i<len(source) and source[i] not in ',}]': i+=1
+            return source[start:i]
+        def identifier():
+            nonlocal i
+            start=i
+            while i<len(source) and source[i] not in '=,{}[]': i+=1
+            return source[start:i]
+        result={}
+        while i<len(source):
+            key=identifier()
+            if i<len(source) and source[i]=='=':
+                i+=1; result[key]=value()
+            if i<len(source) and source[i]==',': i+=1
+            else: break
+        return result
+
+    def _gdb_send(self, command, purpose=None):
+        if not self._debugger_running():
+            return False
+        self._gdb_token+=1
+        token=self._gdb_token
+        if purpose:
+            self._gdb_pending[token]=purpose
+        self._process.write((str(token)+command+"\n").encode("utf-8"))
+        return True
+
+    def _gdb_quote(self, value):
+        return '"'+str(value).replace("\\","\\\\").replace('"','\\"').replace("\n","\\n")+'"'
+
+    def _gdb_add_variable(self, name, value, varobj=None):
+        name=str(name); value=str(value)
+        item=self._debug_variable_items.get(name)
+        if item is None:
+            item=QTreeWidgetItem([name,value])
+            self.debug_inspector.addTopLevelItem(item)
+            self._debug_variable_items[name]=item
+        else:
+            item.setText(1,value)
+        if varobj:
+            self._gdb_var_objects[name]=varobj
+
+    def _gdb_handle_record(self, line):
+        if not line:
+            return
+        if line.startswith(("~","@","&")):
+            payload=self._mi_unescape(line[1:].strip('"'))
+            if getattr(self,"_gdb_register_capture",False) and line.startswith("~"):
+                self.debug_output_view.moveCursor(QTextCursor.End)
+                self.debug_output_view.insertPlainText(payload)
+            else:
+                self._append_console(payload+"\n")
+            return
+        match=re.match(r"^(\d+)(\^)([A-Za-z-]+)(?:,(.*))?$",line)
+        if match:
+            token=int(match.group(1)); cls=match.group(3); payload=self._parse_gdb_mi(match.group(4) or "")
+            purpose=self._gdb_pending.pop(token,None)
+            if cls=="error":
+                self._append_console("[ GDB: "+str(payload.get("msg","Unbekannter Fehler"))+" ]\n")
+            if purpose=="register-console":
+                self._gdb_register_capture=False
+                if cls=="done" and not self.debug_output_view.toPlainText().strip():
+                    self.debug_output_view.setPlainText("GDB hat für die aktuelle Architektur keine Registerwerte geliefert.")
+            if purpose=="break-insert" and cls=="done":
+                self._gdb_send("-break-list","breakpoints")
+            elif purpose=="breakpoints-cleared" and cls=="done":
+                self._gdb_send("-break-list","breakpoints")
+            if purpose in ("variables","variables-manual") and cls=="done":
+                entries=payload.get("variables",[]) or []
+                for entry in entries:
+                    if isinstance(entry,dict): self._gdb_add_variable("Lokal: "+str(entry.get("name","?")),entry.get("value",""))
+                if purpose=="variables-manual":
+                    self._append_console("[ Lokale Variablen neu abgefragt: "+str(len(entries))+" Einträge ]\n")
+            elif purpose=="frames" and cls=="done":
+                self.debug_output_view.appendPlainText("Aufrufstapel:")
+                for entry in payload.get("stack",[]) or []:
+                    if isinstance(entry,dict):
+                        frame=entry.get("frame",entry)
+                        if isinstance(frame,dict): self.debug_output_view.appendPlainText("  "+str(frame.get("level","?"))+": "+str(frame.get("func","?"))+" ("+str(frame.get("fullname",frame.get("file","")))+":"+str(frame.get("line","?"))+")")
+            elif purpose=="breakpoints" and cls=="done":
+                self.debug_output_view.appendPlainText("Haltepunkte:")
+                table=payload.get("BreakpointTable",{})
+                for entry in table.get("body",[]) if isinstance(table,dict) else []:
+                    if isinstance(entry,dict):
+                        point=entry.get("bkpt",entry)
+                        if isinstance(point,dict): self.debug_output_view.appendPlainText("  #"+str(point.get("number","?"))+" "+str(point.get("fullname",point.get("file","")))+":"+str(point.get("line","?"))+" "+str(point.get("enabled","")))
+            elif purpose and purpose[0]=="watch" and cls=="done":
+                self._gdb_add_variable("Ausdruck: "+purpose[1],payload.get("value",""))
+            elif purpose and purpose[0]=="watch-create" and cls=="done":
+                name="Überwachung: "+purpose[1]; varobj=payload.get("name")
+                self._gdb_add_variable(name,payload.get("value",""),varobj)
+                if varobj and str(payload.get("numchild","0"))!="0":
+                    self._gdb_send("-var-list-children --all-values "+varobj,("watch-children",name))
+            elif purpose and purpose[0]=="var-update" and cls=="done":
+                for change in payload.get("changelist",[]) or []:
+                    if isinstance(change,dict):
+                        changed_name=change.get("name","")
+                        expression=next((key for key,val in self._gdb_var_objects.items() if val==changed_name),purpose[1])
+                        self._gdb_add_variable(expression,change.get("value",""),changed_name or self._gdb_var_objects.get(expression))
+                        varobj=self._gdb_var_objects.get(expression)
+                        if varobj:
+                            self._gdb_send("-var-list-children --all-values "+varobj,("watch-children",expression))
+            elif purpose and purpose[0]=="watch-children" and cls=="done":
+                parent=self._debug_variable_items.get(purpose[1])
+                if parent:
+                    parent.takeChildren()
+                    for child in payload.get("children",[]) or []:
+                        if isinstance(child,dict):
+                            child_data=child.get("child",child)
+                            if isinstance(child_data,dict):
+                                node=QTreeWidgetItem([str(child_data.get("exp",child_data.get("name","?"))),str(child_data.get("value",""))])
+                                parent.addChild(node)
+            elif purpose in ("arguments","arguments-manual") and cls=="done":
+                argument_count=0
+                for frame_entry in payload.get("stack-args",[]) or []:
+                    if isinstance(frame_entry,dict):
+                        frame=frame_entry.get("frame",frame_entry)
+                        if isinstance(frame,dict):
+                            for arg in frame.get("args",[]) or []:
+                                if isinstance(arg,dict):
+                                    self._gdb_add_variable("Argument: "+str(arg.get("name","?")),arg.get("value",""))
+                                    argument_count+=1
+                if purpose=="arguments-manual":
+                    self._append_console("[ Funktionsargumente neu abgefragt: "+str(argument_count)+" Einträge ]\n")
+            elif purpose=="memory-address" and cls=="done":
+                address=payload.get("value","")
+                address_match=re.search(r"0x[0-9A-Fa-f]+|^[0-9]+$",str(address).strip())
+                if address_match:
+                    self._gdb_send("-data-read-memory-bytes "+address_match.group(0)+" 16","memory-bytes")
+                else:
+                    self._append_console("[ GDB: Keine gültige Speicheradresse erhalten: "+str(address)+" ]\n")
+            elif purpose=="memory-bytes" and cls=="done":
+                blocks=payload.get("memory",[]) or []
+                self.debug_output_view.appendPlainText("Speicher:")
+                for block in blocks:
+                    if isinstance(block,dict): self.debug_output_view.appendPlainText(str(block.get("begin",""))+": "+str(block.get("contents","")))
+            elif purpose=="register-names" and cls=="done":
+                names=payload.get("register-names",[]) or []
+                self._gdb_register_names=list(names)
+                indexes=[str(i) for i,name in enumerate(names) if name]
+                if indexes: self._gdb_send("-data-list-register-values x "+" ".join(indexes),"register-values")
+            elif purpose=="register-values" and cls=="done":
+                self.debug_output_view.appendPlainText("CPU-Register:")
+                for entry in payload.get("register-values",[]) or []:
+                    if isinstance(entry,dict):
+                        number=str(entry.get("number","")); name=self._gdb_register_names[number] if number.isdigit() and int(number)<len(self._gdb_register_names) else number
+                        self.debug_output_view.appendPlainText(name+": "+str(entry.get("value","")))
+            return
+        if line.startswith("*stopped"):
+            payload=self._parse_gdb_mi(line[1:].split(",",1)[1] if "," in line else "")
+            reason=payload.get("reason","")
+            frame=payload.get("frame",{})
+            if isinstance(frame,dict):
+                self._append_console("\n[ GDB angehalten: "+str(reason)+" – "+str(frame.get("func",""))+" "+str(frame.get("fullname",frame.get("file","")))+":"+str(frame.get("line","?"))+" ]\n")
+            if reason in ("exited-normally","exited-signalled"):
+                self._append_console("[ GDB: Programm beendet ]\n")
+                return
+            for key in list(self._debug_variable_items):
+                if key.startswith(("Lokal: ","Argument: ")):
+                    item=self._debug_variable_items.pop(key)
+                    index=self.debug_inspector.indexOfTopLevelItem(item)
+                    if index>=0: self.debug_inspector.takeTopLevelItem(index)
+            self._gdb_send("-stack-list-variables --all-values","variables")
+            self._gdb_send("-stack-list-arguments --all-values 0 0","arguments")
+            self._gdb_send("-stack-list-frames","frames")
+            for name,varobj in list(self._gdb_var_objects.items()):
+                self._gdb_send("-var-update --all-values "+varobj,("var-update",name))
+            return
+        if line.startswith(("=","+")):
+            payload=self._parse_gdb_mi(line[1:].split(",",1)[1] if "," in line else "")
+            if line.startswith("=thread-group-exited"):
+                self._append_console("[ GDB: Programm beendet ]\n")
+
+    def _set_debug_controls(self, enabled):
+        for widget in (self.breakpoint_button, self.continue_button, self.step_button,
+                       self.next_button, self.locals_button, self.stack_button,
+                       self.print_button, self.watch_button, self.clear_watch_button,
+                       self.memory_button, self.registers_button, self.breakpoints_button,
+                       self.clear_breakpoints_button, self.debug_expression_input):
+            widget.setEnabled(bool(enabled))
+
+    def _debugger_running(self):
+        return bool(self._process and self._process.state()!=QProcess.NotRunning
+                    and self._process.program().endswith("gdb"))
+
+    def debug_show_cpu_registers(self):
+        if not self._debugger_running():
+            QMessageBox.information(self,tr("Debugger nicht aktiv"),tr("Bitte zuerst Debuggen (GDB) starten."))
+            return False
+        self.debug_output_view.clear()
+        self.debug_output_view.appendPlainText("CPU-Register (GDB / aktuelle Architektur):")
+        self._gdb_register_capture=True
+        return self._gdb_send('-interpreter-exec console "info registers"',"register-console")
+
+    def send_debug_command(self, command):
+        commands={"continue":"-exec-continue","step":"-exec-step","next":"-exec-next",
+                  "backtrace":"-stack-list-frames","info registers":"-data-list-register-names",
+                  "breakpoints":"-break-list"}
+        if command not in commands:
+            return False
+        if not self._debugger_running():
+            QMessageBox.information(self,tr("Debugger nicht aktiv"),tr("Bitte zuerst Debuggen (GDB) starten."))
+            return False
+        purpose=("register-names" if command=="info registers" else
+                 "frames" if command=="backtrace" else "breakpoints" if command=="breakpoints" else None)
+        return self._gdb_send(commands[command],purpose)
+
+    def _editor_breakpoint_toggled(self, line, enabled):
+        if not self.current_file or self.current_file.suffix.lower() not in (".cpp", ".cc", ".cxx", ".c"):
+            return
+        if not self._debugger_running():
+            self.debug_output_view.appendPlainText(tr("Haltepunkt vorgemerkt: ") + str(self.current_file.name) + ":" + str(line))
+            return
+        self._sync_editor_breakpoints()
+
+    def _sync_editor_breakpoints(self):
+        if not self.current_file or not self._debugger_running():
+            return
+        relative=self.current_file.relative_to(self.root).as_posix()
+        self._gdb_send("-break-delete","breakpoints-reset")
+        for line in sorted(self.editor.breakpoints):
+            self._gdb_send("-break-insert -f "+self._gdb_quote(relative+":"+str(line)),"break-insert")
+
+    def debug_breakpoint_here(self):
+        if not self.current_file or self.current_file.suffix.lower() not in (".cpp", ".cc", ".cxx", ".c"):
+            QMessageBox.information(self,tr("Kein Haltepunkt"),tr("Bitte zuerst eine C++-Datei öffnen."))
+            return
+        line=self.editor.textCursor().blockNumber()+1
+        enabled=line not in self.editor.breakpoints
+        self.editor.set_breakpoint(line, enabled)
+        self._editor_breakpoint_toggled(line, enabled)
+
+    def debug_print_expression(self):
+        expression=self.debug_expression_input.text().strip()
+        if not expression: return
+        if not self._valid_debug_expression(expression):
+            QMessageBox.warning(self,tr("Ungültiger Ausdruck"),tr("Bitte einen einfachen Variablennamen oder Member-Ausdruck eingeben.")); return
+        self._gdb_send("-data-evaluate-expression "+self._gdb_quote(expression),("watch",expression))
+
+    def _valid_debug_expression(self, expression):
+        return bool(re.fullmatch(r"(?:0x[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*(?:\s*(?:->|\.)\s*[A-Za-z_][A-Za-z0-9_]*|\s*\[[0-9]+\])*)", expression))
+
+    def debug_show_variables(self):
+        if not self._debugger_running():
+            QMessageBox.information(self,tr("Debugger nicht aktiv"),tr("Bitte zuerst Debuggen (GDB) starten."))
+            return False
+        # Remove the previous snapshot so the manual refresh is visibly apparent.
+        for key in list(self._debug_variable_items):
+            if key.startswith(("Lokal: ","Argument: ")):
+                item=self._debug_variable_items.pop(key)
+                index=self.debug_inspector.indexOfTopLevelItem(item)
+                if index>=0:
+                    self.debug_inspector.takeTopLevelItem(index)
+        self._append_console("[ Manuelle Abfrage der lokalen Variablen gestartet ]\n")
+        variables_sent=self._gdb_send("-stack-list-variables --all-values","variables-manual")
+        arguments_sent=self._gdb_send("-stack-list-arguments --all-values 0 0","arguments-manual")
+        if not variables_sent or not arguments_sent:
+            self._append_console("[ GDB: Lokale Variablen konnten nicht vollständig abgefragt werden ]\n")
+            return False
+        return True
+
+    def debug_examine_memory(self):
+        expression=self.debug_expression_input.text().strip()
+        if not expression:
+            QMessageBox.information(self,tr("Speicheradresse fehlt"),tr("Gib im Ausdrucksfeld eine Zeigervariable oder Speicheradresse ein.")); return
+        if not self._valid_debug_expression(expression):
+            QMessageBox.warning(self,tr("Ungültiger Ausdruck"),tr("Bitte einen einfachen Variablennamen oder Member-Ausdruck eingeben.")); return
+        # A plain variable name denotes the variable itself, not its numeric value
+        # as a pointer. Resolve its actual address first; explicit hexadecimal
+        # addresses can be read directly.
+        if re.fullmatch(r"0x[0-9A-Fa-f]+", expression):
+            self._gdb_send("-data-read-memory-bytes "+expression+" 16","memory-bytes")
+        else:
+            self._gdb_send("-data-evaluate-expression "+self._gdb_quote("&( "+expression+")"),"memory-address")
+
+    def debug_watch_expression(self):
+        expression=self.debug_expression_input.text().strip()
+        if not expression: return
+        if not self._valid_debug_expression(expression):
+            QMessageBox.warning(self,tr("Ungültiger Ausdruck"),tr("Bitte einen einfachen Variablennamen oder Member-Ausdruck eingeben.")); return
+        self._gdb_send("-var-create - * "+self._gdb_quote(expression),("watch-create",expression))
+
+    def debug_clear_breakpoints(self):
+        if not self._debugger_running():
+            QMessageBox.information(self,tr("Debugger nicht aktiv"),tr("Bitte zuerst Debuggen (GDB) starten.")); return
+        self._gdb_send("-break-delete","breakpoints-cleared")
+        self.editor.clear_breakpoints()
+        self.debug_output_view.appendPlainText("Alle Haltepunkte wurden gelöscht.")
+
+    def debug_clear_watches(self):
+        for name,varobj in list(self._gdb_var_objects.items()):
+            self._gdb_send("-var-delete "+varobj)
+            item=self._debug_variable_items.pop(name,None)
+            if item:
+                index=self.debug_inspector.indexOfTopLevelItem(item)
+                if index>=0: self.debug_inspector.takeTopLevelItem(index)
+        self._gdb_var_objects.clear()
+
+    def manage_cpp_libraries(self):
+        if not shutil.which("pkg-config"):
+            QMessageBox.information(self,tr("pkg-config fehlt"),tr("Installiere pkg-config, um installierte C++-Bibliotheken zu erkennen."))
+            return
+        try:
+            result=subprocess.run(["pkg-config","--list-all"],capture_output=True,text=True,timeout=10,check=True)
+            available=sorted({line.split()[0] for line in result.stdout.splitlines() if line.split()})
+        except (subprocess.SubprocessError, OSError) as exc:
+            QMessageBox.warning(self,tr("Bibliotheken nicht lesbar"),str(exc))
+            return
+        dialog=QDialog(self)
+        dialog.setWindowTitle(tr("C++-Bibliotheken verwalten"))
+        dialog.resize(520,520)
+        box=QVBoxLayout(dialog)
+        box.addWidget(QLabel(tr("Installierte pkg-config-Pakete auswählen. Die Auswahl wird beim direkten g++-Build und optional auch bei CMake eingebunden.")))
+        search=QLineEdit(); search.setPlaceholderText(tr("Bibliothek suchen …")); box.addWidget(search)
+        listing=QListWidget(); listing.setSelectionMode(QListWidget.MultiSelection); box.addWidget(listing,1)
+        for package in available:
+            item=QListWidgetItem(package); listing.addItem(item)
+            if package in self.cpp_libraries: item.setSelected(True)
+        search.textChanged.connect(lambda value: [listing.item(i).setHidden(value.lower() not in listing.item(i).text().lower()) for i in range(listing.count())])
+        buttons=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject); box.addWidget(buttons)
+        if dialog.exec()==QDialog.Accepted:
+            self.cpp_libraries=[listing.item(i).text() for i in range(listing.count()) if listing.item(i).isSelected()]
+            self._save_ide_setting("cpp_libraries",self.cpp_libraries)
+            self.library_summary.setText(", ".join(self.cpp_libraries) if self.cpp_libraries else tr("Keine pkg-config-Bibliotheken ausgewählt"))
+
+    def _program_arguments(self):
+        try:
+            return shlex.split(self.program_args_input.text(), posix=True)
+        except ValueError as exc:
+            QMessageBox.warning(self,tr("Ungültige Programmargumente"),str(exc))
+            return None
+
+    def _cmake_targets_from_output(self, output=""):
+        """Discover CMake targets in the active or legacy project build folder."""
+        found=[]
+        artifacts={}
+        project_root=self._cmake_project_root() or self.root
+        try:
+            active_build=self._cmake_build_path().resolve()
+        except (OSError, ValueError):
+            active_build=project_root/"build"
+        build_roots=[]
+        for candidate in (active_build, project_root/"build"):
+            candidate=candidate.resolve()
+            if project_root in candidate.parents and candidate not in build_roots:
+                build_roots.append(candidate)
+
+        # Prefer CMake File API metadata: it distinguishes executable targets
+        # from helper targets such as *_autogen and object libraries.
+        for build_root in build_roots:
+            try:
+                reply=build_root/".cmake"/"api"/"v1"/"reply"
+                indexes=sorted(reply.glob("index-*.json"),key=lambda item:item.stat().st_mtime,reverse=True)
+                if not indexes:
+                    continue
+                index=json.loads(indexes[0].read_text(encoding="utf-8"))
+                codemodel=index.get("reply",{}).get("codemodel-v2",{}).get("jsonFile")
+                if not codemodel:
+                    continue
+                model=json.loads((reply/codemodel).read_text(encoding="utf-8"))
+                configurations=model.get("configurations",[])
+                requested=str(self.cmake_build_type.currentData() or "Debug").lower()
+                configurations.sort(key=lambda item:0 if str(item.get("name","")).lower()==requested else 1)
+                for config in configurations:
+                    for target_ref in config.get("targets",[]):
+                        target=json.loads((reply/target_ref["jsonFile"]).read_text(encoding="utf-8"))
+                        name=target.get("name",target_ref.get("name",""))
+                        if not name:
+                            continue
+                        if name not in found:
+                            found.append(name)
+                        if target_ref.get("type",target.get("type",""))=="EXECUTABLE":
+                            paths=[item.get("path") for item in target.get("artifacts",[]) if item.get("path")]
+                            if paths:
+                                artifact=(build_root/paths[0]).resolve()
+                                if project_root in artifact.parents:
+                                    artifacts[name]=artifact.relative_to(project_root).as_posix()
+                if artifacts:
+                    break
+            except (OSError,ValueError,KeyError,TypeError) as exc:
+                self._append_console("[ CMake-Dateimodell konnte nicht gelesen werden: "+str(exc)+" ]\n")
+
+        # Compatibility fallback for builds created before the IDE selected
+        # its generator/configuration-specific build directory.
+        for build_root in build_roots:
+            try:
+                if not build_root.is_dir():
+                    continue
+                for directory, dirnames, filenames in os.walk(build_root):
+                    dirnames[:]=[name for name in dirnames if name not in {
+                        ".git", ".cmake", "CMakeFiles", ".qt", "Testing"
+                    } and not name.endswith("_autogen")]
+                    for filename in filenames:
+                        candidate=(Path(directory)/filename).resolve()
+                        if not candidate.is_file() or not os.access(candidate,os.X_OK):
+                            continue
+                        if candidate.suffix.lower() in (".so", ".a", ".o", ".py", ".sh"):
+                            continue
+                        if project_root not in candidate.parents:
+                            continue
+                        if filename.startswith("cmake_") or filename in ("Makefile", "ninja", "build.ninja"):
+                            continue
+                        relative=candidate.relative_to(project_root).as_posix()
+                        artifacts.setdefault(candidate.name,relative)
+                        if candidate.name not in found:
+                            found.append(candidate.name)
+            except OSError as exc:
+                self._append_console("[ Vorhandene Build-Artefakte konnten nicht geprüft werden: "+str(exc)+" ]\n")
+
+        current=self.cmake_target_combo.currentData() or self._saved_cmake_target
+        self.cmake_target_combo.blockSignals(True)
+        self.cmake_target_combo.clear()
+        self.cmake_target_combo.addItem(tr("Automatisch / alle Ziele"),"")
+        for name in found:
+            self.cmake_target_combo.addItem(name,name)
+        if current:
+            index=self.cmake_target_combo.findData(current)
+            if index>=0:
+                self.cmake_target_combo.setCurrentIndex(index)
+        self.cmake_target_combo.blockSignals(False)
+        self._saved_cmake_target=self.cmake_target_combo.currentData() or ""
+        self._save_ide_setting("cmake_target",self._saved_cmake_target)
+        self._cmake_target_artifacts=artifacts
+        if found:
+            self._append_console("[ CMake-Buildziele: "+", ".join(found)+" ]\n")
+        else:
+            self._append_console("[ Keine CMake-Buildziele im Projekt gefunden. ]\n")
+
+    def _selected_executable(self):
+        project_root = self._cmake_project_root()
+        if project_root is not None:
+            selected=self.cmake_target_combo.currentData()
+            if selected and selected not in self._cmake_target_artifacts:
+                return None
+            if selected and selected in self._cmake_target_artifacts:
+                candidate=(project_root/self._cmake_target_artifacts[selected]).resolve()
+                if project_root in candidate.parents and candidate.is_file() and os.access(candidate,os.X_OK):
+                    self._built_executable=candidate; return candidate
+                return None
+            if not selected and len(self._cmake_target_artifacts)==1:
+                name,path=next(iter(self._cmake_target_artifacts.items()))
+                candidate=(project_root/path).resolve()
+                if project_root in candidate.parents and candidate.is_file() and os.access(candidate,os.X_OK):
+                    self._built_executable=candidate; return candidate
+            return None
+        entry=self.cpp_entry_combo.currentData() if hasattr(self,"cpp_entry_combo") else None
+        if entry:
+            candidate=self.root/"build"/Path(entry).with_suffix("")
+            if candidate.is_file() and os.access(candidate,os.X_OK):
+                self._built_executable=candidate; return candidate
+        elif self.current_file and self.current_file.suffix.lower() in (".cpp",".cc",".cxx",".c"):
+            candidate=self.root/"build"/self.current_file.stem
+            if candidate.is_file() and os.access(candidate,os.X_OK):
+                self._built_executable=candidate; return candidate
+        return None
+
+    def _prepare_cmake_user_libraries(self, build_dir):
+        include_file=build_dir/"lunagpt-user-libraries.cmake"
+        if not self.cpp_libraries:
+            try: include_file.unlink(missing_ok=True)
+            except OSError: pass
+            return None
+        if not shutil.which("pkg-config"):
+            raise RuntimeError(tr("pkg-config fehlt. Installiere pkgconf."))
+        for package in self.cpp_libraries:
+            if not re.fullmatch(r"[A-Za-z0-9_.+-]+",package):
+                raise ValueError(tr("Ungültiger pkg-config-Paketname: ")+package)
+        package_list=" ".join(self.cpp_libraries)
+        script=("include_guard(GLOBAL)\n"
+                "find_package(PkgConfig REQUIRED)\n"
+                "pkg_check_modules(LUNAGPT_SELECTED REQUIRED IMPORTED_TARGET "+package_list+")\n"
+                "link_libraries(PkgConfig::LUNAGPT_SELECTED)\n")
+        include_file.write_text(script,encoding="utf-8")
+        return include_file
+
+    def _start_process(self, program, args, label, pending=None, working_dir=None):
+        if not self.execution_enabled:
+            QMessageBox.warning(self,tr("Ausführung gesperrt"),tr("Build-Ausführung ist nicht freigegeben. Aktiviere die Build-Freigabe im Hauptfenster."))
+            return
+        if self._process and self._process.state()!=QProcess.NotRunning:
+            QMessageBox.information(self,tr("Programm läuft"),tr("Bitte zuerst das laufende Programm stoppen."))
+            return
+        proc=QProcess(self)
+        proc.setWorkingDirectory(str(working_dir or self.root))
+        proc.setProgram(program)
+        proc.setArguments([str(a) for a in args])
+        proc.setProcessChannelMode(QProcess.SeparateChannels)
+        proc.readyReadStandardOutput.connect(lambda p=proc,l=label: self._read_process_output(p, l, False))
+        proc.readyReadStandardError.connect(lambda p=proc,l=label: self._read_process_output(p, l, True))
+        proc.started.connect(lambda p=proc,l=label: self._on_process_started(p,l))
+        proc.errorOccurred.connect(lambda err,p=proc: self._append_console("\\n[ Prozessfehler: "+p.errorString()+" ]\\n"))
+        proc.finished.connect(lambda code,status,p=proc: self._process_finished(p,code,status))
+        self._process=proc
+        self._pending_action=pending
+        self.stop_button.setEnabled(True)
+        accepts_input = label in ("Python-Programm","C++-Programm","CMake-Programm") or (label=="GDB-Debugging" and self._gdb_pty_master is not None)
+        self.stdin_input.setEnabled(accepts_input)
+        self.stdin_button.setEnabled(accepts_input)
+        self._set_debug_controls(label=="GDB-Debugging")
+        proc.start()
+
+    def _read_process_output(self, proc, label, is_stderr):
+        raw=proc.readAllStandardError() if is_stderr else proc.readAllStandardOutput()
+        value=bytes(raw).decode("utf-8","replace")
+        if label=="GDB-Debugging" and not is_stderr:
+            self._gdb_buffer+=value
+            while "\n" in self._gdb_buffer:
+                line,self._gdb_buffer=self._gdb_buffer.split("\n",1)
+                line=line.rstrip("\r")
+                if line and not line.startswith("(gdb)"):
+                    self._gdb_handle_record(line)
+            return
+        self._append_console(value)
+
+    def _close_gdb_pty(self):
+        if self._debugger_running():
+            self.stdin_input.setEnabled(False)
+            self.stdin_button.setEnabled(False)
+        if self._gdb_pty_notifier is not None:
+            self._gdb_pty_notifier.setEnabled(False)
+            self._gdb_pty_notifier.deleteLater()
+            self._gdb_pty_notifier=None
+        for attr in ("_gdb_pty_master","_gdb_pty_slave"):
+            fd=getattr(self,attr,None)
+            if fd is not None:
+                try: os.close(fd)
+                except OSError: pass
+                setattr(self,attr,None)
+
+    def _read_gdb_inferior_output(self, *_):
+        if self._gdb_pty_master is None: return
+        try:
+            data=os.read(self._gdb_pty_master,65536)
+        except OSError:
+            self._close_gdb_pty(); return
+        if data:
+            self._append_console(data.decode("utf-8","replace"))
+
+    def _on_process_started(self, proc, label):
+        self._append_console("\n[ gestartet: "+label+" ]\n")
+        if label=="GDB-Debugging":
+            self._gdb_buffer=""; self._gdb_pending.clear(); self._gdb_var_objects.clear()
+            self._gdb_send("-gdb-set pagination off")
+            self._gdb_send("-break-insert main","break-insert")
+            self._gdb_send("-exec-run")
+
+    def _process_finished(self, proc, code, status):
+        self._append_console("\\n[ beendet: Exit "+str(code)+" ]\\n")
+        if proc is self._process:
+            if proc.program().endswith("gdb"):
+                self._close_gdb_pty()
+            self.stop_button.setEnabled(False)
+            self.stdin_input.setEnabled(False)
+            self.stdin_button.setEnabled(False)
+            self._set_debug_controls(False)
+            self._process=None
+            pending=self._pending_action
+            self._pending_action=None
+            if pending=="cmake_configure" and code==0:
+                self._cmake_targets_from_output(self.console.toPlainText())
+                selected=self.cmake_target_combo.currentData()
+                build_path=self._cmake_build_path()
+                project_root=self._cmake_project_root() or self.root
+                args=["--build",str(build_path),"--config",str(self.cmake_build_type.currentData()),"--parallel",str(max(1,os.cpu_count() or 1))]
+                if selected: args += ["--target",selected]
+                self._start_process("cmake",args,"CMake-Build",pending="cmake_build_done",working_dir=project_root)
+            elif pending=="cmake_build_done" and code==0:
+                self._built_executable=self._selected_executable()
+                if self._built_executable:
+                    self._append_console("[ ausführbare Datei erkannt: "+str(self._built_executable.relative_to(self.root))+" ]\n")
+                else:
+                    self._append_console("[ Build erfolgreich. Wähle ein ausführbares CMake-Ziel für Start oder Debugging. ]\n")
+        proc.deleteLater()
+
+    def stop_process(self):
+        if self._process and self._process.state()!=QProcess.NotRunning:
+            self._process.terminate()
+            if self._process.state()!=QProcess.NotRunning:
+                QTimer.singleShot(1800,lambda p=self._process: p.kill() if p and p.state()!=QProcess.NotRunning else None)
+
+    def send_process_input(self):
+        if not self._process or self._process.state()==QProcess.NotRunning:
+            return
+        value=self.stdin_input.text()
+        if self._debugger_running() and self._gdb_pty_master is not None:
+            try: os.write(self._gdb_pty_master,(value+"\n").encode("utf-8"))
+            except OSError as exc: self._append_console("\n[ Programmeingabe fehlgeschlagen: "+str(exc)+" ]\n")
+        else:
+            self._process.write((value+"\n").encode("utf-8"))
+        self.stdin_input.clear()
+
+    def _open_selected_python_entrypoint(self):
+        """Open main.py automatically when a Python project folder is selected."""
+        selected = self._selected_tree_path
+        if not selected or not selected.is_dir():
+            return False
+        if self.root not in selected.parents and selected != self.root:
+            return False
+        candidates = (selected / "main.py", selected / "__main__.py")
+        entry = next((candidate for candidate in candidates if candidate.is_file()), None)
+        if entry is None:
+            return False
+        index = self.model.index(str(entry))
+        if not index.isValid():
+            return False
+        self.open_selected(index)
+        return bool(self.current_file == entry.resolve())
+
+    def build_current(self):
+        if not self.execution_enabled:
+            QMessageBox.warning(self,tr("Ausführung gesperrt"),tr("Build-Ausführung ist nicht freigegeben. Aktiviere die Build-Freigabe im Hauptfenster."))
+            return
+        if self.editor.document().isModified():
+            QMessageBox.information(self,tr("Ungespeicherte Änderungen"),tr("Bitte speichere die aktuelle Datei vor dem Build."))
+            return
+        # Selecting a Python project folder is sufficient: open its main.py
+        # automatically, just as selecting a CMake folder is sufficient for C++.
+        self._open_selected_python_entrypoint()
+        self.console.clear()
+        self.jump_error_button.setEnabled(False)
+        self._built_executable=None
+        project_root = self._cmake_project_root()
+        if project_root is not None:
+            self._cmake_target_artifacts.clear()
+            try:
+                build_dir=self._cmake_build_path(); build_dir.mkdir(parents=True,exist_ok=True)
+                query=build_dir/".cmake"/"api"/"v1"/"query"; query.mkdir(parents=True,exist_ok=True)
+                (query/"codemodel-v2").touch()
+                generator=self.cmake_generator_combo.currentData()
+                configure_args=["-S",str(project_root),"-B",str(build_dir),
+                                "-DCMAKE_CXX_STANDARD="+str(self.cpp_standard_combo.currentData()).replace("c++", "")]
+                if generator!="Ninja Multi-Config":
+                    configure_args += ["-DCMAKE_BUILD_TYPE="+str(self.cmake_build_type.currentData())]
+                if generator: configure_args += ["-G",str(generator)]
+                toolchain=self.cmake_toolchain.strip()
+                if toolchain:
+                    tool_path=(self.root/toolchain).resolve()
+                    if not tool_path.is_file(): raise ValueError(tr("Die gespeicherte Toolchain-Datei ist ungültig."))
+                    configure_args += ["-DCMAKE_TOOLCHAIN_FILE="+str(tool_path)]
+                c_compiler=self.cmake_c_compiler_input.text().strip()
+                cxx_compiler=self.cmake_cxx_compiler_input.text().strip()
+                if c_compiler:
+                    if "\n" in c_compiler or "\r" in c_compiler: raise ValueError(tr("Ungültige Compiler-Angabe."))
+                    configure_args += ["-DCMAKE_C_COMPILER="+c_compiler]
+                if cxx_compiler:
+                    if "\n" in cxx_compiler or "\r" in cxx_compiler: raise ValueError(tr("Ungültige Compiler-Angabe."))
+                    configure_args += ["-DCMAKE_CXX_COMPILER="+cxx_compiler]
+                library_include=self._prepare_cmake_user_libraries(build_dir)
+                configure_args += ["-DCMAKE_PROJECT_INCLUDE="+(str(library_include) if library_include else "")]
+                self._start_process("cmake",configure_args,"CMake-Konfiguration",pending="cmake_configure",working_dir=project_root)
+            except (OSError,ValueError,RuntimeError) as exc:
+                QMessageBox.warning(self,tr("CMake-Einstellungen"),str(exc))
+            return
+        if not self.current_file or not self.current_file.is_file():
+            QMessageBox.information(self,tr("Keine Quelldatei"),tr("Bitte zuerst eine Python- oder C++-Datei öffnen."))
+            return
+        suffix=self.current_file.suffix.lower()
+        rel=self.current_file.relative_to(self.root).as_posix()
+        if suffix==".py":
+            self._start_process("python3",["-m","py_compile",rel],"Python-Syntaxprüfung")
+        elif suffix in (".cpp",".cc",".cxx",".c"):
+            self._refresh_cpp_entrypoints()
+            entry=self.cpp_entry_combo.currentData()
+            if not entry:
+                QMessageBox.information(self,tr("C++-Einstieg fehlt"),tr("Es wurde keine main()-Funktion erkannt. Lege eine Programmeinstiegsdatei an oder nutze CMake.")); return
+            source_files=[]
+            for candidate in self.root.rglob("*"):
+                if not candidate.is_file() or candidate.suffix.lower() not in (".cpp",".cc",".cxx",".c"): continue
+                rel_parts=candidate.relative_to(self.root).parts
+                if any(part in ("build",".git",".venv","venv","__pycache__") for part in rel_parts): continue
+                if candidate.relative_to(self.root).as_posix() in self._cpp_entrypoints and candidate.relative_to(self.root).as_posix()!=entry: continue
+                source_files.append(candidate)
+            source_files.sort()
+            if not source_files:
+                QMessageBox.information(self,tr("Keine Quelldateien"),tr("Für den ausgewählten Programmeinstieg wurden keine Quelldateien gefunden.")); return
+            build_dir=self.root/"build"; build_dir.mkdir(exist_ok=True)
+            output=build_dir/Path(entry).with_suffix("")
+            output.parent.mkdir(parents=True,exist_ok=True)
+            self._built_executable=output
+            source_args=[f.relative_to(self.root).as_posix() for f in source_files]
+            compiler_args=["-g","-O0","-std="+str(self.cpp_standard_combo.currentData()),*source_args]
+            if self.cpp_libraries:
+                try:
+                    pkg=subprocess.run(["pkg-config","--cflags","--libs",*self.cpp_libraries],cwd=str(self.root),capture_output=True,text=True,timeout=15,check=True)
+                    compiler_args.extend(shlex.split(pkg.stdout))
+                except (subprocess.SubprocessError,OSError) as exc:
+                    QMessageBox.warning(self,tr("Bibliotheksauflösung fehlgeschlagen"),str(exc)); return
+            compiler_args += ["-o",str(output)]
+            compiler=self.cmake_cxx_compiler_input.text().strip() or "g++"
+            if not shutil.which(compiler):
+                QMessageBox.warning(self,tr("Compiler nicht gefunden"),tr("Der ausgewählte C++-Compiler wurde nicht gefunden: ")+compiler); return
+            try: output.unlink(missing_ok=True)
+            except OSError: pass
+            self._start_process(compiler,compiler_args,"C++-Build")
+        else:
+            QMessageBox.information(self,tr("Nicht unterstützt"),tr("Bitte eine Python- oder C++-Quelldatei öffnen oder ein CMake-Projekt mit CMakeLists.txt wählen."))
+
+    def _launch_current_program(self):
+        args=self._program_arguments()
+        if args is None:
+            return
+        project_root = self._cmake_project_root()
+        # A selected CMake project wins over a stale Python file that may
+        # remain open in the editor after switching folders.
+        if project_root is None and self.current_file and self.current_file.suffix.lower()==".py":
+            rel=self.current_file.relative_to(self.root).as_posix()
+            self._start_process("python3",[rel,*args],"Python-Programm")
+            return
+        if project_root is not None:
+            # Vor jedem Start die CMake-Ziele und vorhandene Artefakte neu
+            # ermitteln. So lassen sich auch bereits außerhalb des IDE-Build-
+            # Ablaufs erzeugte Programme starten, ohne zuerst erneut zu bauen.
+            self._cmake_targets_from_output(self.console.toPlainText())
+        executable=self._selected_executable()
+        if executable:
+            self._start_process(str(executable),args,"C++-Programm",working_dir=(project_root if project_root is not None else self.root))
+        else:
+            QMessageBox.information(self,tr("Noch nicht gebaut"),tr("Kein eindeutiges Programm gefunden. Baue das Projekt und wähle ein CMake-Ziel."))
+
+    def run_current(self):
+        if not self.execution_enabled:
+            QMessageBox.warning(self,tr("Ausführung gesperrt"),tr("Build-Ausführung ist nicht freigegeben. Aktiviere die Build-Freigabe im Hauptfenster."))
+            return
+        if self.editor.document().isModified():
+            QMessageBox.information(self,tr("Ungespeicherte Änderungen"),tr("Bitte speichere die aktuelle Datei vor dem Start."))
+            return
+        self._open_selected_python_entrypoint()
+        self.console.clear()
+        self._launch_current_program()
+
+    def debug_current(self):
+        if not self.execution_enabled:
+            QMessageBox.warning(self,tr("Ausführung gesperrt"),tr("Build-Ausführung ist nicht freigegeben. Aktiviere die Build-Freigabe im Hauptfenster."))
+            return
+        if self.editor.document().isModified():
+            QMessageBox.information(self,tr("Ungespeicherte Änderungen"),tr("Bitte speichere die aktuelle Datei vor dem Debuggen."))
+            return
+        if self._cmake_project_root() is None and (not self.current_file or self.current_file.suffix.lower() not in (".cpp",".cc",".cxx",".c")):
+            QMessageBox.information(self,tr("C++-Debugger"),tr("GDB-Debugging ist für ein gebautes C++-Programm vorgesehen."))
+            return
+        executable=self._selected_executable()
+        if not executable or not executable.is_file():
+            QMessageBox.information(self,tr("Noch nicht gebaut"),tr("Bitte zuerst das C++-Programm bauen und ein eindeutiges CMake-Ziel auswählen."))
+            return
+        args=self._program_arguments()
+        if args is None:
+            return
+        self.console.clear()
+        self.debug_inspector.clear()
+        self.debug_output_view.clear()
+        self._debug_variable_items.clear()
+        self._gdb_register_names=[]
+        rel=executable.relative_to(self.root).as_posix()
+        if self._process and self._process.state()!=QProcess.NotRunning:
+            QMessageBox.information(self,tr("Programm läuft"),tr("Bitte zuerst das laufende Programm stoppen.")); return
+        self._close_gdb_pty()
+        gdb_args=["--quiet","--interpreter=mi2"]
+        # Install editor-marked breakpoints before GDB starts the inferior.
+        if self.current_file and self.current_file.suffix.lower() in (".cpp", ".cc", ".cxx", ".c"):
+            for line in sorted(self.editor.breakpoints):
+                location = str(self.current_file) + ":" + str(line)
+                gdb_args += ["-ex", "break '" + location.replace("'", "\\'") + "'"]
+        if pty is not None:
+            try:
+                self._gdb_pty_master,self._gdb_pty_slave=pty.openpty()
+                inferior_tty=os.ttyname(self._gdb_pty_slave)
+                self._gdb_pty_notifier=QSocketNotifier(self._gdb_pty_master,QSocketNotifier.Read,self)
+                self._gdb_pty_notifier.activated.connect(self._read_gdb_inferior_output)
+                gdb_args += ["--tty="+inferior_tty]
+            except OSError as exc:
+                self._close_gdb_pty()
+                QMessageBox.warning(self,tr("Debugger-Terminal"),str(exc)); return
+        gdb_args += ["--args",rel,*args]
+        self._start_process("gdb",gdb_args,"GDB-Debugging")
+        # Keep the PTY slave descriptor open for the entire GDB session.
+        # Closing it here removes /dev/pts/N before GDB can open --tty=...,
+        # which causes "No such file or directory" during debugger startup.
+        # _process_finished() / closeEvent() release both descriptors.
+
+    def closeEvent(self, event):
+        if self._process and self._process.state()!=QProcess.NotRunning:
+            self._process.terminate()
+            if not self._process.waitForFinished(1500):
+                self._process.kill()
+                self._process.waitForFinished(1500)
+        self._close_gdb_pty()
+        self.ide_settings.sync()
+        event.accept()
 
     def update_file_label(self, *_):
         if self.current_file:
@@ -2712,6 +4400,7 @@ class ProjectFileDialog(QDialog):
             if pixmap.isNull():
                 QMessageBox.warning(self,tr("Bildvorschau"),tr("Bild kann nicht angezeigt werden.")); return
             self.current_file=path; self._active_highlighter=None
+            self._update_active_project_label()
             self.image_preview.setPixmap(pixmap)
             self.editor_stack.setCurrentWidget(self.image_preview)
             self.editor.setEnabled(False); self.save_button.setEnabled(False); self.revert_button.setEnabled(False)
@@ -2729,21 +4418,32 @@ class ProjectFileDialog(QDialog):
             if frage_de(self,"Keine Textdatei","Diese Datei kann nicht als UTF-8-Text angezeigt werden. Mit der zugeordneten Anwendung öffnen?",QMessageBox.Yes|QMessageBox.No)==QMessageBox.Yes:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
             return
+        if self.current_file != path:
+            self.editor.clear_breakpoints()
         self.current_file=path
+        self._update_active_project_label()
         self.editor_stack.setCurrentWidget(self.editor); self.editor.setEnabled(True)
         suffix=path.suffix.lower()
         if suffix==".py":
             self._active_highlighter=self.python_highlighter
             self.python_highlighter.setDocument(self.editor.document())
+            self.cpp_highlighter.setDocument(None)
+            if self.json_highlighter: self.json_highlighter.setDocument(None)
+        elif suffix in (".cpp", ".cc", ".cxx", ".h", ".hpp", ".hh", ".hxx", ".c"):
+            self._active_highlighter=self.cpp_highlighter
+            self.cpp_highlighter.setDocument(self.editor.document())
+            self.python_highlighter.setDocument(None)
             if self.json_highlighter: self.json_highlighter.setDocument(None)
         elif suffix==".json":
             if self.json_highlighter is None: self.json_highlighter=JsonSyntaxHighlighter(self.editor.document())
             self._active_highlighter=self.json_highlighter
             self.json_highlighter.setDocument(self.editor.document())
             self.python_highlighter.setDocument(None)
+            self.cpp_highlighter.setDocument(None)
         else:
             self._active_highlighter=None
             self.python_highlighter.setDocument(None)
+            self.cpp_highlighter.setDocument(None)
             if self.json_highlighter: self.json_highlighter.setDocument(None)
         self.editor.setPlainText(content)
         self.editor.document().setModified(False)
@@ -3407,11 +5107,9 @@ class MainWindow(QMainWindow):
 
     def activate_chat_context(self, chat_id):
         """Restore the project selection and last-active marker for this chat."""
-        previous_chat = self.config.get("last_active_chat_id")
         project_map = self.config.setdefault("chat_project_dirs", {})
-        # Migrate the legacy single project selection to the previously active chat once.
-        if chat_id and chat_id not in project_map and chat_id == previous_chat and self.config.get("project_dir"):
-            project_map[chat_id] = self.config["project_dir"]
+        # Never migrate the legacy global project_dir into a chat implicitly:
+        # it may belong to another chat and would cross-link projects.
         self.current_chat = chat_id
         self.config["last_active_chat_id"] = chat_id or ""
         if chat_id and chat_id in project_map:
@@ -3451,7 +5149,13 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, tr("Speicherort geändert"), tr("Neue Dateien werden ab jetzt hier gespeichert:\n\n") + self.config["workspace_dir"] + tr("\n\nBereits erstellte Dateien bleiben an ihrem bisherigen Speicherort."))
 
     def current_project_dir(self):
-        value=str(self.config.get("project_dir") or "").strip()
+        # The per-chat map is authoritative. The global project_dir is only a
+        # compatibility mirror and must never be used to select another chat's project.
+        project_map = self.config.get("chat_project_dirs", {})
+        if self.current_chat:
+            value = str(project_map.get(self.current_chat) or "").strip()
+        else:
+            value = str(self.config.get("project_dir") or "").strip()
         return Path(value).expanduser() if value else None
 
     def update_project_display(self):
@@ -3516,7 +5220,7 @@ class MainWindow(QMainWindow):
             project=self.current_project_dir()
         if not project or not project.is_dir(): return
         try:
-            dialog=ProjectFileDialog(project,self)
+            dialog=ProjectFileDialog(project,self,execution_enabled=bool(self.config.get('project_exec_enabled',False)))
             dialog.exec()
         except Exception as exc:
             QMessageBox.critical(

@@ -1,4 +1,4 @@
-# LunaGPT 1.13.1
+# LunaGPT 1.13.2
 
 Zweisprachiger Desktop-Chatclient (Deutsch/Englisch) für Linux und Raspberry Pi. Die Sprache der Benutzeroberfläche lässt sich in den Einstellungen wählen und wird dauerhaft gespeichert. 
 LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachein- und -ausgabe, Themes sowie KI-gestützte Dateiwerkzeuge.
@@ -46,10 +46,28 @@ Tastenkürzel: `Strg+N` neuer Chat, `Strg+F` globale Suche, `Strg+T` Design wech
 - Beide Gedächtnisse lassen sich getrennt verwalten. Zugangsdaten und sensible persönliche/medizinische Angaben werden ausgeschlossen.
 - **Projektänderungen vergleichen:** Der Projektmanager kann den aktuellen Editorinhalt mit der gespeicherten Datei vergleichen und zeigt einen Unified-Diff, bevor Änderungen gespeichert werden.
 
+## Integrierte Entwicklungssteuerung im Projektmanager
+
+Der Projektmanager besitzt eine zusätzliche Build-/Start-/Debug-Leiste mit integrierter Programmausgabe. Python-Dateien können direkt gestartet und syntaktisch geprüft werden; C/C++-Einzeldateien werden mit Debug-Symbolen gebaut und gestartet. CMake-Projekte können konfiguriert und gebaut werden. Laufende Prozesse lassen sich stoppen; Programmeingaben können über das Eingabefeld an stdin gesendet werden. Die Leiste ist nur aktiv, wenn die separate Build-Ausführungsfreigabe für den ausgewählten Projektordner eingeschaltet ist. GDB kann interaktiv über Haltepunkte, Fortsetzen, Einzelschritt, Variablen-/Argumentanzeige, Aufrufstapel, Ausdrucksauswertung und überwachte Ausdrücke gesteuert werden. Die Konsole erkennt außerdem GCC-/Clang-Diagnosen und Python-Tracebacks; über „Zum Fehler springen“ wird die gemeldete Projektdatei geöffnet und die angegebene Zeile markiert.
+
+## C++-Werkzeuge
+
+Für C++-Entwicklung werden `build-essential` (unter anderem `g++` und `make`), `cmake`, `gdb` und `pkgconf` (stellt `pkg-config` bereit) benötigt. Bei Installation des DEB-Pakets werden diese Werkzeuge automatisch als Paketabhängigkeiten installiert. Bei Nutzung des GitHub-ZIP-Archivs installiert `install.sh` dieselben Werkzeuge. CMake-Builds und GDB-Debugging sind an die separat aktivierte Build-Ausführungsfreigabe des ausgewählten Projektordners gebunden. Die KI-Buildschnittstelle akzeptiert für CMake sowohl relative Pfade als auch absolute Pfade, sofern Quell- und Buildordner nach Auflösung innerhalb des ausgewählten Projektordners liegen. Dadurch funktionieren auch Projekte in tiefer verschachtelten Chat- und Unterordnern; Pfade außerhalb des freigegebenen Projektordners bleiben gesperrt.
+
+Beispiele im ausgewählten Projektordner:
+
+```bash
+cmake -S . -B build
+cmake --build build
+gdb --batch --quiet -ex run -ex bt --args build/programm
+```
+
+Die GDB-Oberfläche arbeitet interaktiv über GDB-Kommandos. Erkannte lokale Variablen, Funktionsargumente und überwachte Ausdrücke werden zusätzlich in einer tabellarischen Variablenansicht angezeigt. Eine zweite Debugger-Registerkarte sammelt Speicherauszüge (`x/16xb`) und CPU-Registerausgaben. Die vollständige Ausgabe bleibt zusätzlich in der Konsole.
+
 ## Projektmanager-Editor
 
 - Zeilennummern und Hervorhebung der aktuellen Zeile.
-- Python-Syntaxhervorhebung sowie farbige JSON-Schlüssel, Werte und Zahlen.
+- Python- und C/C++-Syntaxhervorhebung sowie farbige JSON-Schlüssel, Werte und Zahlen.
 - Suchen, Weitersuchen, Ersetzen und Alle ersetzen.
 - Ungespeicherte Änderungen werden mit einem Punkt vor dem Dateipfad markiert.
 - Änderungen an der geöffneten Datei durch andere Programme werden erkannt; bei ungespeicherten eigenen Änderungen fragt LunaGPT vor dem Neuladen.
@@ -74,9 +92,8 @@ Lese- und Schreibzugriff müssen separat freigegeben werden. Vorhandene Projektd
 
 ## Build-Befehle im ausgewählten Projektordner
 
-LunaGPT kann auf ausdrücklichen Auftrag Build- und Prüfskripte direkt im aktuell ausgewählten Projektordner ausführen. Dafür müssen Lese-, Schreib- und die separate Build-Ausführungsfreigabe aktiviert sein. 
-Die Build-Freigabe ist standardmäßig ausgeschaltet und wird beim Wechsel des Projektordners zurückgesetzt. Unterstützt werden `build_deb.sh`, `build_release.sh` und `release.sh` 
-im Projektstamm sowie begrenzte Prüfungen mit Python `py_compile`, `dpkg-deb`, `zip` und `unzip`. Befehle laufen ohne `sudo`, ohne Shell-Verkettung und mit Zeitlimit. Buildskripte sind ausführbarer Projektcode; aktiviere die Freigabe nur für vertrauenswürdige Projekte.
+LunaGPT kann auf ausdrücklichen Auftrag Build- und Prüfskripte direkt im aktuell ausgewählten Projektordner ausführen. Dafür müssen Lese-, Schreib- und die separate Build-Ausführungsfreigabe aktiviert sein. Für neu angelegte Projekte im chatbezogenen Arbeitsbereich kann Luna auf ausdrücklichen Build-/Startauftrag außerdem CMake konfigurieren, C++-Quelldateien mit g++/c++ kompilieren und ausführbare Dateien innerhalb dieses Arbeitsbereichs starten. Für Konsolenprogramme können für einen begrenzten Testlauf definierte stdin-Eingaben übergeben werden. Bei ausdrücklich verlangtem Build/Start soll Luna die Werkzeuge tatsächlich ausführen und nicht nur Terminalbefehle auflisten. 
+Die Build-Freigabe ist standardmäßig ausgeschaltet und wird beim Wechsel des Projektordners zurückgesetzt. Unterstützt werden `build_deb.sh`, `build_release.sh` und `release.sh` im Projektstamm und in Unterordnern, Python `py_compile` sowie der Start vorhandener `.py`-Dateien, C++-Builds mit `g++`/`c++` in eine Ausgabedatei innerhalb des Projekts, der Start ausführbarer Projektdateien sowie Prüfungen mit `dpkg-deb`, `zip` und `unzip`. Für Python-Start z.B. `python3 ordner/main.py`; für C++ z.B. `g++ -fsyntax-only main.cpp` zur Syntaxprüfung, `g++ main.cpp -o build/app` zum Kompilieren und anschließend `./build/app` zum Starten. Befehle im ausgewählten Projektordner benötigen die separate Build-Ausführungsfreigabe und laufen ohne Shell-Verkettung und ohne `sudo`. Befehle im Chat-Arbeitsbereich sind nur bei ausdrücklichem Build-/Startauftrag verfügbar und bleiben auf diesen Arbeitsbereich begrenzt. Programme sind ausführbarer Code und können im Rahmen der Freigabe auf die Benutzerrechte des LunaGPT-Prozesses zugreifen; nur vertrauenswürdige Projekte starten. Befehle laufen ohne `sudo`, ohne Shell-Verkettung und mit Zeitlimit. Buildskripte sind ausführbarer Projektcode; aktiviere die Freigabe nur für vertrauenswürdige Projekte.
 
 ### Buildskripte in Projekt-Unterordnern
 
@@ -90,7 +107,7 @@ Benötigt wird Debian 13 / Raspberry Pi OS mit ARM64 oder eine kompatible Debian
 
 ```bash
 sudo apt update
-sudo apt install ./lunagpt_1.13.1_all.deb
+sudo apt install ./lunagpt_1.13.2_all.deb
 # Benötigte MBROLA-Sprachausgabe:
 sudo apt install mbrola mbrola-de4 mbrola-en1
 ```
@@ -98,7 +115,7 @@ sudo apt install mbrola mbrola-de4 mbrola-en1
 Falls `apt` fehlende Abhängigkeiten meldet, installiert es diese normalerweise automatisch. Alternativ können die Laufzeitpakete vorab installiert werden:
 
 ```bash
-sudo apt install dpkg zip unzip python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4 mbrola-en1
+sudo apt install build-essential cmake gdb pkgconf dpkg zip unzip python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4 mbrola-en1
 ```
 
 Start über das Anwendungsmenü oder im Terminal:
@@ -118,7 +135,7 @@ Das DEB installiert den Starter nach `/usr/bin/lunagpt` und die Anwendung nach `
 ```bash
 cd LunaGPT
 sudo apt update
-sudo apt install dpkg zip unzip python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4 mbrola-en1
+sudo apt install build-essential cmake gdb pkgconf dpkg zip unzip python3 python3-pyside6.qtwidgets python3-pyside6.qtgui python3-pyside6.qtcore python3-cryptography python3-pyaudio poppler-utils alsa-utils espeak-ng mbrola mbrola-de4 mbrola-en1
 python3 lunagpt/main.py
 ```
 
@@ -149,7 +166,11 @@ Debian schützt die systemweite Python-Installation vor pip-Änderungen. Der Bef
 
 | Komponente | Zweck | Installation |
 |---|---|---|
-| Python 3 | Laufzeit | `python3` |
+| Python 3 | Laufzeit für LunaGPT und Python-Projekte | `python3` |
+| build-essential | C/C++-Compiler und Build-Werkzeuge (`g++`, `make`) für C++-Projekte | `build-essential` |
+| cmake | CMake-Konfiguration und Projekt-Builds | `cmake` |
+| gdb | Interaktives Debugging, Variablen, Speicher und Register | `gdb` |
+| pkgconf | Erkennung und Einbindung installierter C++-Bibliotheken über pkg-config | `pkgconf` |
 | PySide6 | Grafische Oberfläche | `python3-pyside6.qtwidgets`, `qtgui`, `qtcore` |
 | cryptography | Verschlüsselungsfunktionen | `python3-cryptography` |
 | PyAudio | Mikrofonzugriff | `python3-pyaudio` |
@@ -171,14 +192,14 @@ Im Projektverzeichnis:
 ./build_deb.sh
 ```
 
-Benötigt werden `dpkg-deb`, `zip` und `unzip` (auf Debian liefert das Paket `dpkg` das Werkzeug `dpkg-deb`). Die Paketversion wird automatisch aus `lunagpt/version.py` gelesen; die Versionsnummer muss im Build-Skript nicht separat gepflegt werden. Das fertige Paket liegt unter `dist/lunagpt_1.13.0_all.deb`.
+Benötigt werden `dpkg-deb`, `zip` und `unzip` (auf Debian liefert das Paket `dpkg` das Werkzeug `dpkg-deb`). Die Paketversion wird automatisch aus `lunagpt/version.py` gelesen; die Versionsnummer muss im Build-Skript nicht separat gepflegt werden. Das fertige Paket liegt unter `dist/lunagpt_1.13.2_all.deb`.
 
 ## Prüfen
 
 ```bash
 python3 -m py_compile lunagpt/main.py lunagpt/siwc.py lunagpt/version.py
-dpkg-deb -I dist/lunagpt_1.13.1_all.deb
-dpkg-deb -c dist/lunagpt_1.13.1_all.deb
+dpkg-deb -I dist/lunagpt_1.13.2_all.deb
+dpkg-deb -c dist/lunagpt_1.13.2_all.deb
 ```
 
 ## Projektstruktur

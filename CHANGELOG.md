@@ -1,4 +1,53 @@
-# CHANGELOG
+# Änderungsprotokoll
+
+## 1.13.2
+- C++-Syntaxhervorhebung für `.cpp`, `.cc`, `.cxx`, `.c`, `.h`, `.hpp`, `.hh` und `.hxx` im Projektmanager ergänzt.
+- C++-Syntaxprüfung mit `g++ -fsyntax-only` sowie Builds mit `g++`/`c++` in ein Ziel innerhalb des ausgewählten Projektordners ergänzt.
+- Start vorhandener Python-Programme aus dem ausgewählten Projektordner ergänzt; Argumente werden unterstützt.
+- Start zuvor im Projektordner gebauter ausführbarer Programme ergänzt.
+- Ausführung bleibt an die vorhandenen Lese-, Schreib- und Build-Freigaben gebunden; Pfade außerhalb des ausgewählten Projekts werden abgewiesen.
+- Bestehende Python-, Chat-, Gedächtnis-, Projekt- und Sicherungsfunktionen bleiben erhalten.
+# CMake- und GDB-Unterstützung
+- Debian-Abhängigkeiten um `cmake` und `gdb` ergänzt; `build-essential` bleibt für g++/make enthalten.
+- Projektmodus erlaubt sichere CMake-Konfiguration und Builds innerhalb des ausgewählten Projektordners.
+- Nicht-interaktives GDB-Debugging mit Programmstart und Backtrace ergänzt.
+- README und ZIP-Installationsskript an die benötigten Entwicklungswerkzeuge angepasst.
+# Integrierte Entwicklungssteuerung
+- Build-, Start-, Debug- und Stop-Schaltflächen im Projektmanager ergänzt.
+- Integrierte Programmausgabe und stdin-Eingabe über QProcess ergänzt.
+- Python-Syntaxprüfung/-Start, C++-Build/-Start, CMake-Konfiguration/-Build und GDB-Batchlauf über die Oberfläche erreichbar.
+- Ausführungsschaltflächen nur bei aktivierter Projekt-Build-Freigabe.
+# Fehlernavigation im Projektmanager
+- Compilerdiagnosen von GCC/Clang und Python-Tracebacks werden in der integrierten Konsole erkannt.
+- Schaltfläche „Zum Fehler springen“ öffnet die gemeldete Datei innerhalb des ausgewählten Projektordners und positioniert den Cursor an der Fehlerzeile.
+- Pfade außerhalb des Projektordners werden aus Sicherheitsgründen nicht geöffnet.
+# IDE-Abschlussausbau
+- Interaktive GDB-Steuerung mit Haltepunkt an der Cursorzeile, Fortsetzen, Einzelschritt, nächste Zeile, lokalen Variablen und Ausdrucksauswertung ergänzt.
+- CMake-Ziele werden nach der Konfiguration erkannt und im Projektmanager auswählbar gemacht.
+- Programmargumente können für Python- und C++-Programme angegeben werden.
+- C++-Build ohne CMake berücksichtigt die C/C++-Quelldateien des ausgewählten Projekts.
+- Doppelklick auf erkannte Compiler- und Python-Fehlerzeilen öffnet die Fehlernavigation.
+# IDE-Funktionsausbau (Fortsetzung)
+- GDB-Inspektor ergänzt: Ausgabe von Argumenten, lokalen Variablen und Aufrufstapel; Ausdrücke können überwacht und die Überwachung gelöscht werden.
+- Erkannte lokale Variablen, Argumente und überwachte Ausdrücke werden in einer tabellarischen Debugger-Variablenansicht angezeigt; vollständige GDB-Ausgabe bleibt in der Konsole.
+- GDB-Aktionen für 16-Byte-Speicherauszug und CPU-Register ergänzt; Ergebnisse erscheinen in einer eigenen Registerkarte.
+- CMake-Build-Typ und C++-Standard sind auswählbar; CMake konfiguriert die gewählten Werte vor jedem Build neu und baut parallel.
+- Bibliotheksverwaltung ergänzt: installierte pkg-config-Pakete auswählen und deren Compiler-/Linker-Flags bei direkten g++-Builds verwenden.
+- IDE-Einstellungen werden projektbezogen gespeichert.
+- pkgconf als Abhängigkeit für die Bibliotheksverwaltung ergänzt; README und ZIP-Installer aktualisiert.
+# IDE-Fertigstellung vor der Testphase
+- GDB-Steuerung auf die GDB/MI2-Schnittstelle umgestellt; Antworten werden strukturiert ausgewertet statt als unformatierte Befehlsausgabe behandelt.
+- Variablen, Funktionsargumente, Aufrufstapel, überwachte Ausdrücke und untergeordnete Werte werden im Debugger-Inspektor dargestellt und bei Haltepunkten aktualisiert.
+- Speicherabfragen verwenden die ausgewertete Adresse; Registerwerte werden mit Registernamen ausgegeben.
+- Separates PTY für das debugte Programm ergänzt, damit Programmeingaben auch während einer GDB-Sitzung möglich sind.
+- CMake-File-API zur Erkennung ausführbarer Targets ergänzt; die gewählte Konfiguration wird für Multi-Config-Generatoren berücksichtigt.
+- CMake-Generator, Build-Verzeichnis, Toolchain-Datei, C- und C++-Compiler konfigurierbar; getrennte Build-Pfade verhindern das Vermischen inkompatibler Generator-/Compiler-Caches.
+- Ausgewählte pkg-config-Bibliotheken werden zusätzlich bei CMake-Projekten über eine projektlokale CMake-Erweiterung eingebunden.
+- Direkte C++-Builds erkennen mehrere `main()`-Einstiegspunkte und lassen das gewünschte Programm auswählen; andere Einstiegspunktdateien werden ausgeschlossen.
+- Direkte C++-Builds können den ausgewählten C++-Compiler verwenden; Programme mit mehreren ausführbaren Targets werden für CMake empfohlen.
+- IDE-Einstellungen einschließlich Generator, Compiler, Toolchain, Build-Verzeichnis und Programmeinstieg werden je Projekt gespeichert.
+
+
 
 ## 1.13.1
 - Gesprächsgedächtnis: wichtige Projektanforderungen und Projektstände werden bereits während der laufenden Unterhaltung chatlokal festgehalten.
@@ -326,4 +375,3 @@
 - Dateiwerkzeuge können angehängte Originaldateien unverändert in den Arbeitsbereich kopieren.
 - ZIP- und DEB-Archive werden mit Pfad-, Mengen- und Größenprüfungen extrahiert.
 - Datenbank-Fix und Streaming-Responses-API bleiben erhalten.
-
