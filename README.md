@@ -22,7 +22,7 @@ LunaGPT bietet ChatGPT-Anmeldung, lokale Chat-Historie, Datei-Anhänge, Sprachei
 - Optionaler KI-Lesezugriff und separat freischaltbarer Schreibzugriff auf ausgewählte Projektordner
 - Automatische Sicherung vorhandener Dateien vor Änderungen
 - Online-Bildgenerierung über AI Horde
-- Python und c++ Programmierung
+- Python und c++ Programmierung möglich.
 
 ## Menüleiste
 
